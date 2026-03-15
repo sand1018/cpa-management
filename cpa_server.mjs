@@ -663,17 +663,6 @@ async function handleRequest(req, res) {
     if (method === "GET") {
       return jsonResponse(res, loadLogs());
     }
-    if (method === "POST") {
-      const body = await readBody(req);
-      if (body) {
-        // 兼容批量数组和单条对象
-        const entries = Array.isArray(body) ? body : [body];
-        const logs = loadLogs();
-        logs.push(...entries);
-        saveLogs(logs);
-      }
-      return jsonResponse(res, { ok: true });
-    }
     if (method === "DELETE") {
       saveLogs([]);
       return jsonResponse(res, { ok: true });
@@ -732,6 +721,30 @@ async function handleRequest(req, res) {
         ? await readBody(req)
         : undefined;
       const result = await proxyUpstream(method, endpoint, body);
+
+      // 对关键操作记录日志
+      if (method === "PATCH" && endpoint === "/auth-files/status" && body) {
+        const name = body.name || "未知";
+        if (result.status >= 200 && result.status < 300) {
+          addLog(
+            body.disabled ? `⏸️ 手动禁用: ${name}` : `✅ 手动启用: ${name}`,
+            body.disabled ? "warn" : "success",
+          );
+        } else {
+          addLog(
+            `❌ ${body.disabled ? "禁用" : "启用"}失败: ${name} (HTTP ${result.status})`,
+            "error",
+          );
+        }
+      } else if (method === "DELETE" && endpoint.startsWith("/auth-files")) {
+        const delName = url.searchParams.get("name") || "未知";
+        if (result.status >= 200 && result.status < 300) {
+          addLog(`🗑️ 已删除凭证: ${delName}`, "warn");
+        } else {
+          addLog(`❌ 删除失败: ${delName} (HTTP ${result.status})`, "error");
+        }
+      }
+
       return jsonResponse(res, result.data, result.status);
     } catch (err) {
       return errorResponse(res, `代理请求失败: ${err.message}`, 502);

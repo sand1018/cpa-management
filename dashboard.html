@@ -1527,6 +1527,7 @@
 
       function logout() {
         stopCountdown();
+        stopLogPoll();
         sessionStorage.removeItem(STORAGE_KEY_SESSION);
         clearCredentials();
         location.reload();
@@ -1828,6 +1829,19 @@
       let _localCountdown = 0;
       let _lastKnownRunAt = 0;
       let _runningPollTimer = null;
+      let _logPollTimer = null;
+
+      function startLogPoll() {
+        stopLogPoll();
+        _logPollTimer = setInterval(restoreLogs, 5000);
+      }
+
+      function stopLogPoll() {
+        if (_logPollTimer) {
+          clearInterval(_logPollTimer);
+          _logPollTimer = null;
+        }
+      }
 
       // ============================================================
       // 巡检控制（事件驱动同步 + 本地倒计时）
@@ -1979,40 +1993,17 @@
       // 日志
       // ============================================================
 
-      // 日志缓冲区，200ms 内合并为一次 POST
-      let _logBuffer = [];
-      let _logFlushTimer = null;
-
-      function _flushLogs() {
-        if (_logBuffer.length === 0) return;
-        const batch = _logBuffer;
-        _logBuffer = [];
-        _logFlushTimer = null;
-        fetch(ENDPOINT_LOCAL_LOGS, {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify(batch),
-        }).catch(() => {});
-      }
-
       function log(msg, type = "info") {
         const body = document.getElementById("logBody");
         const line = document.createElement("div");
         line.className = `log-line ${type}`;
         const ts = new Date().toLocaleTimeString();
-        const text = `[${ts}] ${msg}`;
-        line.textContent = text;
+        line.textContent = `[${ts}] ${msg}`;
         body.appendChild(line);
-        // 裁剪 DOM 节点，与后端 MAX_LOGS 对齐
         while (body.children.length > 500) {
           body.removeChild(body.firstChild);
         }
         body.scrollTop = body.scrollHeight;
-        // 批量持久化到后端
-        _logBuffer.push({ text, cls: line.className });
-        if (!_logFlushTimer) {
-          _logFlushTimer = setTimeout(_flushLogs, LOG_FLUSH_DELAY_MS);
-        }
       }
       function clearLog() {
         document.getElementById("logBody").innerHTML = "";
@@ -2552,6 +2543,7 @@
         await loadConfig();
         await Promise.all([restoreLogs(), loadPriorityFromServer()]);
         syncPatrolStatus();
+        startLogPoll();
         refresh();
       }
 
