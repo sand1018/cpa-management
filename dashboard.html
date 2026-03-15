@@ -566,6 +566,44 @@
         margin-top: 8px;
       }
 
+      /* 批量操作栏 */
+      .batch-bar {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: linear-gradient(
+          135deg,
+          rgba(99, 102, 241, 0.15),
+          rgba(99, 102, 241, 0.05)
+        );
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        border-radius: var(--radius);
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .batch-bar.show {
+        display: flex;
+      }
+      .batch-bar .batch-count {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--accent-hover);
+        min-width: 100px;
+      }
+      .batch-bar .btn {
+        font-size: 12px;
+        padding: 6px 14px;
+      }
+      /* 卡片复选框 */
+      .account-card .batch-check {
+        flex-shrink: 0;
+      }
+      .account-card.selected {
+        border-color: var(--accent);
+        background: rgba(99, 102, 241, 0.08);
+      }
+
       /* 日志 */
       .log-panel {
         background: var(--surface);
@@ -1130,9 +1168,19 @@
                 id="btnLayout"
                 onclick="toggleLayout()"
                 title="切换网格/列表布局"
-                style="padding: 7px 10px"
+                style="padding: 7px 10px; line-height: 0"
               >
-                🔲
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                >
+                  <rect x="1" y="1" width="6" height="6" rx="1" />
+                  <rect x="9" y="1" width="6" height="6" rx="1" />
+                  <rect x="1" y="9" width="6" height="6" rx="1" />
+                  <rect x="9" y="9" width="6" height="6" rx="1" />
+                </svg>
               </button>
               <button
                 class="btn btn-primary"
@@ -1182,6 +1230,38 @@
 
           <!-- 分类筛选 -->
           <div class="filter-tabs" id="filterTabs"></div>
+
+          <!-- 批量操作栏 -->
+          <div class="batch-bar" id="batchBar">
+            <span class="batch-count" id="batchCount">已选 0 个</span>
+            <button class="btn btn-outline" onclick="batchSelectAll()">
+              全选
+            </button>
+            <button class="btn btn-outline" onclick="batchDeselectAll()">
+              取消全选
+            </button>
+            <button class="btn btn-success" onclick="batchToggle(false)">
+              ▶️ 批量启用
+            </button>
+            <button class="btn btn-danger" onclick="batchToggle(true)">
+              ⏸️ 批量禁用
+            </button>
+            <button
+              class="btn btn-danger"
+              onclick="batchDelete()"
+              style="
+                background: var(--red);
+                border-color: var(--red);
+                color: #fff;
+                min-width: 80px;
+              "
+            >
+              批量删除
+            </button>
+            <button class="btn btn-outline" onclick="exitBatchMode()">
+              ✕ 取消
+            </button>
+          </div>
 
           <!-- 账号列表 -->
           <div id="accountList">
@@ -1836,7 +1916,9 @@
         const btn = document.getElementById("btnLayout");
         const isGrid = list.classList.toggle("grid-mode");
 
-        btn.textContent = isGrid ? "☰" : "🔲";
+        btn.innerHTML = isGrid
+          ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2" rx="1"/><rect x="1" y="7" width="14" height="2" rx="1"/><rect x="1" y="12" width="14" height="2" rx="1"/></svg>'
+          : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>';
         btn.title = isGrid ? "切换为列表视图" : "切换为网格视图";
         localStorage.setItem("cpa_layout", isGrid ? "grid" : "list");
       }
@@ -1867,10 +1949,184 @@
           document.getElementById("accountList").classList.add("grid-mode");
           const btn = document.getElementById("btnLayout");
           if (btn) {
-            btn.textContent = "☰";
+            btn.innerHTML =
+              '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2" rx="1"/><rect x="1" y="7" width="14" height="2" rx="1"/><rect x="1" y="12" width="14" height="2" rx="1"/></svg>';
             btn.title = "切换为列表视图";
           }
         }
+      }
+
+      // ============================================================
+      // 批量操作
+      // ============================================================
+
+      let batchMode = false;
+      const selectedSet = new Set();
+
+      function enterBatchMode() {
+        batchMode = true;
+        document.getElementById("batchBar").classList.add("show");
+        updateBatchUI();
+      }
+
+      function exitBatchMode() {
+        batchMode = false;
+        selectedSet.clear();
+        document.getElementById("batchBar").classList.remove("show");
+        renderAccounts(allFiles);
+      }
+
+      function toggleSelect(index) {
+        if (selectedSet.has(index)) {
+          selectedSet.delete(index);
+        } else {
+          selectedSet.add(index);
+        }
+        // 自动显示/隐藏批量操作栏
+        if (selectedSet.size > 0) {
+          batchMode = true;
+          document.getElementById("batchBar").classList.add("show");
+        } else {
+          batchMode = false;
+          document.getElementById("batchBar").classList.remove("show");
+        }
+        updateBatchUI();
+        renderAccounts(allFiles);
+      }
+
+      function batchSelectAll() {
+        const filtered = getFilteredFiles(allFiles, currentFilter);
+        if (searchKeyword) {
+          filtered.filter((f) =>
+            (f.account || f.email || f.name || "")
+              .toLowerCase()
+              .includes(searchKeyword),
+          );
+        }
+        for (const f of filtered) {
+          selectedSet.add(allFiles.indexOf(f));
+        }
+        updateBatchUI();
+        renderAccounts(allFiles);
+      }
+
+      function batchDeselectAll() {
+        selectedSet.clear();
+        updateBatchUI();
+        renderAccounts(allFiles);
+      }
+
+      function updateBatchUI() {
+        document.getElementById("batchCount").textContent =
+          `已选 ${selectedSet.size} 个`;
+      }
+
+      async function batchToggle(disabled) {
+        if (selectedSet.size === 0) {
+          alert("请先选择要操作的账号");
+          return;
+        }
+        const action = disabled ? "禁用" : "启用";
+        if (!confirm(`确认批量${action} ${selectedSet.size} 个账号?`)) return;
+
+        showLoading(true);
+        log(`⏳ 开始批量${action} ${selectedSet.size} 个账号...`, "info");
+
+        let success = 0;
+        let fail = 0;
+
+        for (const idx of selectedSet) {
+          const f = allFiles[idx];
+          if (!f) continue;
+          const name = f.name || f.account || f.email;
+          try {
+            await apiCall("PATCH", "/auth-files/status", {
+              name,
+              disabled,
+            });
+            success++;
+            log(`  ✓ ${name} 已${action}`, "success");
+          } catch (err) {
+            fail++;
+            log(`  ✗ ${name} ${action}失败: ${err.message}`, "error");
+          }
+        }
+
+        log(
+          `批量${action}完成: ${success} 成功, ${fail} 失败`,
+          success > 0 ? "success" : "error",
+        );
+        exitBatchMode();
+        await refresh();
+      }
+
+      async function deleteAccount(index) {
+        const f = allFiles[index];
+        if (!f) return;
+        const name = f.name || f.account || f.email;
+        const displayName = f.account || f.email || f.name;
+        if (
+          !confirm(
+            `确认删除凭证「${displayName}」?\n\n⚠️ 此操作不可恢复，凭证文件将被永久删除。`,
+          )
+        )
+          return;
+
+        showLoading(true);
+        try {
+          await apiCall(
+            "DELETE",
+            `/auth-files?name=${encodeURIComponent(name)}`,
+          );
+          log(`🗑️ 已删除凭证: ${displayName}`, "success");
+          await refresh();
+        } catch (err) {
+          log(`删除失败: ${err.message}`, "error");
+          showLoading(false);
+        }
+      }
+
+      async function batchDelete() {
+        if (selectedSet.size === 0) {
+          alert("请先选择要删除的账号");
+          return;
+        }
+        if (
+          !confirm(
+            `⚠️ 确认删除 ${selectedSet.size} 个凭证?\n\n此操作不可恢复，凭证文件将被永久删除！`,
+          )
+        )
+          return;
+
+        showLoading(true);
+        log(`🗑️ 开始批量删除 ${selectedSet.size} 个凭证...`, "info");
+
+        let success = 0;
+        let fail = 0;
+
+        for (const idx of selectedSet) {
+          const f = allFiles[idx];
+          if (!f) continue;
+          const name = f.name || f.account || f.email;
+          try {
+            await apiCall(
+              "DELETE",
+              `/auth-files?name=${encodeURIComponent(name)}`,
+            );
+            success++;
+            log(`  ✓ ${name} 已删除`, "success");
+          } catch (err) {
+            fail++;
+            log(`  ✗ ${name} 删除失败: ${err.message}`, "error");
+          }
+        }
+
+        log(
+          `批量删除完成: ${success} 成功, ${fail} 失败`,
+          success > 0 ? "success" : "error",
+        );
+        exitBatchMode();
+        await refresh();
       }
 
       // ============================================================
@@ -2030,8 +2286,15 @@
               )
               .join("");
 
+            const checkboxHtml = `<input type="checkbox" class="batch-check" style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;" ${selectedSet.has(i) ? "checked" : ""} onclick="event.stopPropagation();toggleSelect(${i})" />`;
+            const escapedName = (f.account || f.email || f.name || "").replace(
+              /'/g,
+              "\\'",
+            );
+
             return `
-      <div class="account-card" data-index="${i}">
+      <div class="account-card ${selectedSet.has(i) ? "selected" : ""}" data-index="${i}" onclick="if(batchMode){toggleSelect(${i});}">
+        ${checkboxHtml}
         <div class="account-icon">${icon}</div>
         <div class="account-info">
           <div class="account-email">${f.account || f.email || f.name}${tagStr}${getPriorityBadge(f.account)}</div>
@@ -2046,14 +2309,15 @@
         <div class="account-actions">
           ${
             isEnabled
-              ? `<button class="btn btn-danger" onclick="if(confirm('确认禁用账号 ${(f.account || f.email || f.name || "").replace(/'/g, "\\'")}？')) toggleAccount(${i}, true)" title="禁用">⏸️</button>`
-              : `<button class="btn btn-success" onclick="if(confirm('确认启用账号 ${(f.account || f.email || f.name || "").replace(/'/g, "\\'")}？')) toggleAccount(${i}, false)" title="启用">▶️</button>`
+              ? `<button class="btn btn-danger" onclick="event.stopPropagation();if(confirm('确认禁用账号 ${escapedName}?')) toggleAccount(${i}, true)" title="禁用">⏸️</button>`
+              : `<button class="btn btn-success" onclick="event.stopPropagation();if(confirm('确认启用账号 ${escapedName}?')) toggleAccount(${i}, false)" title="启用">▶️</button>`
           }
           ${
             isDisabled
-              ? `<button class="btn btn-outline" onclick="cycleAccountPriority('${f.account}')" title="切换优先级" style="padding:4px 8px;font-size:11px;">🏷️</button>`
+              ? `<button class="btn btn-outline" onclick="event.stopPropagation();cycleAccountPriority('${f.account}')" title="切换优先级" style="padding:4px 8px;font-size:11px;">🏷️</button>`
               : ""
           }
+          <button class="btn btn-outline" onclick="event.stopPropagation();deleteAccount(${i})" title="删除凭证" style="padding:4px 8px;font-size:11px;color:var(--red);">🗑️</button>
         </div>
       </div>
     `;
