@@ -309,6 +309,8 @@ function flushServerLogs() {
 // 巡检定时器（后端驻留，setTimeout 链式调用，无漂移）
 // ============================================================
 
+const MIN_PATROL_INTERVAL = 30;
+
 const _patrol = {
   active: false,
   interval: 180,
@@ -357,11 +359,11 @@ function serverStartPatrol(interval) {
     _patrol.timerId = null;
   }
   _patrol.active = true;
-  _patrol.interval = interval;
-  scheduleNextPatrol(interval);
+  _patrol.interval = Math.max(interval, MIN_PATROL_INTERVAL);
+  scheduleNextPatrol(_patrol.interval);
   persistPatrolState();
-  addLog(`🔄 定时巡检已开启，间隔 ${interval}s`, "info");
-  console.log(`🔄 巡检已开启，间隔 ${interval}s`);
+  addLog(`🔄 定时巡检已开启，间隔 ${_patrol.interval}s`, "info");
+  console.log(`🔄 巡检已开启，间隔 ${_patrol.interval}s`);
   return { ok: true };
 }
 

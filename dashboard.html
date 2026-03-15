@@ -1204,7 +1204,7 @@
                   type="number"
                   id="patrolInterval"
                   value="180"
-                  min="10"
+                  min="30"
                   max="3600"
                   onfocus="this.dataset.prev = this.value"
                   onchange="confirmSaveConfig(this)"
@@ -1317,6 +1317,7 @@
       const DEFAULT_TARGET = 5;
       const DEFAULT_TIMEOUT = 30;
       const DEFAULT_PATROL_INTERVAL = 180;
+      const MIN_PATROL_INTERVAL = 30;
       const LOG_FLUSH_DELAY_MS = 200;
 
       // -- 错误判定 --
@@ -1825,6 +1826,7 @@
       let _countdownTimer = null;
       let _localCountdown = 0;
       let _lastKnownRunAt = 0;
+      let _runningPollTimer = null;
 
       // ============================================================
       // 巡检控制（事件驱动同步 + 本地倒计时）
@@ -1847,10 +1849,20 @@
         return status;
       }
 
+      function stopRunningPoll() {
+        if (_runningPollTimer) {
+          clearTimeout(_runningPollTimer);
+          _runningPollTimer = null;
+        }
+      }
+
       function applyPatrolStatus(status) {
         const btn = document.getElementById("btnPatrol");
         const statusEl = document.getElementById("patrolStatus");
         if (!btn || !statusEl) return;
+
+        // 每次同步都清掉短轮询，按新状态决定是否重启
+        stopRunningPoll();
 
         // 检测到新的巡检执行，自动刷新日志和数据
         if (
@@ -1879,6 +1891,8 @@
         if (status.running) {
           statusEl.textContent = "执行中...";
           stopCountdown();
+          // 后端正在执行，2 秒后再次轮询等待完成
+          _runningPollTimer = setTimeout(() => syncPatrolStatus(), 2000);
         } else {
           // 用后端精确值初始化本地倒计时
           _localCountdown = status.remaining || 0;
@@ -1905,6 +1919,7 @@
           clearInterval(_countdownTimer);
           _countdownTimer = null;
         }
+        stopRunningPoll();
       }
 
       function renderCountdown() {
@@ -1925,9 +1940,10 @@
           });
         } else {
           if (!confirm("确认开启定时巡检？")) return;
-          const interval =
+          const raw =
             parseInt(document.getElementById("patrolInterval").value) ||
             DEFAULT_PATROL_INTERVAL;
+          const interval = Math.max(raw, MIN_PATROL_INTERVAL);
           await fetch(ENDPOINT_PATROL_START, {
             method: "POST",
             headers: authHeaders(),
