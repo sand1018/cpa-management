@@ -1,0 +1,1953 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPA 认证文件管理</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface2: #242735;
+        --border: #2e3145;
+        --text: #e4e6ef;
+        --text-dim: #8b8fa3;
+        --accent: #6366f1;
+        --accent-hover: #818cf8;
+        --green: #22c55e;
+        --green-bg: rgba(34, 197, 94, 0.12);
+        --red: #ef4444;
+        --red-bg: rgba(239, 68, 68, 0.12);
+        --yellow: #eab308;
+        --yellow-bg: rgba(234, 179, 8, 0.12);
+        --blue: #3b82f6;
+        --blue-bg: rgba(59, 130, 246, 0.12);
+        --radius: 12px;
+        --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          "Segoe UI",
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        line-height: 1.6;
+      }
+
+      /* 头部 */
+      .header {
+        background: linear-gradient(
+          135deg,
+          #1e1b4b 0%,
+          #312e81 50%,
+          #1e1b4b 100%
+        );
+        padding: 24px 32px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+      }
+      .header h1 {
+        font-size: 22px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #c7d2fe, #a5b4fc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .header-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      /* 状态指示 */
+      .connection-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .connection-badge.ok {
+        background: var(--green-bg);
+        color: var(--green);
+      }
+      .connection-badge.err {
+        background: var(--red-bg);
+        color: var(--red);
+      }
+      .connection-badge.loading {
+        background: var(--yellow-bg);
+        color: var(--yellow);
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .dot.ok {
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+      }
+      .dot.err {
+        background: var(--red);
+      }
+      .dot.loading {
+        background: var(--yellow);
+        animation: pulse 1.2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      /* 主容器 */
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      .main-layout {
+        display: grid;
+        grid-template-columns: 1fr 350px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      .content-area {
+        min-width: 0;
+      }
+
+      .sidebar-area {
+        position: sticky;
+        top: 24px;
+      }
+
+      /* 配置栏 */
+      .config-bar {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px 20px;
+        margin-bottom: 20px;
+        display: flex;
+        gap: 12px;
+        align-items: end;
+        flex-wrap: wrap;
+      }
+      .config-bar .field {
+        flex: 1;
+        min-width: 200px;
+      }
+      .config-bar label {
+        display: block;
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .config-bar input,
+      .config-bar select {
+        width: 100%;
+        padding: 8px 12px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .config-bar input:focus {
+        border-color: var(--accent);
+      }
+      .config-bar .field.small {
+        flex: 0 0 80px;
+        min-width: 80px;
+      }
+      .tooltip-wrap {
+        position: relative;
+        display: inline-block;
+        margin-left: 4px;
+        cursor: help;
+      }
+      .tooltip-wrap .tip-icon {
+        font-size: 11px;
+        opacity: 0.5;
+        transition: opacity 0.2s;
+      }
+      .tooltip-wrap:hover .tip-icon {
+        opacity: 1;
+      }
+      .tooltip-wrap .tip-text {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--surface2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 400;
+        white-space: nowrap;
+        z-index: 100;
+        box-shadow: var(--shadow);
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      .tooltip-wrap .tip-text::after {
+        content: "";
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 5px solid transparent;
+        border-top-color: var(--border);
+      }
+      .tooltip-wrap:hover .tip-text {
+        display: block;
+      }
+
+      /* 按钮 */
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 18px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      .btn:active {
+        transform: scale(0.97);
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn-primary:hover {
+        background: var(--accent-hover);
+      }
+      .btn-outline {
+        background: transparent;
+        color: var(--text-dim);
+        border: 1px solid var(--border);
+      }
+      .btn-outline:hover {
+        background: var(--surface2);
+        color: var(--text);
+      }
+      .btn-danger {
+        background: var(--red-bg);
+        color: var(--red);
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+      .btn-danger:hover {
+        background: rgba(239, 68, 68, 0.2);
+      }
+      .btn-success {
+        background: var(--green-bg);
+        color: var(--green);
+        border: 1px solid rgba(34, 197, 94, 0.2);
+      }
+      .btn-success:hover {
+        background: rgba(34, 197, 94, 0.2);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* 统计卡片 */
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        text-align: center;
+        transition:
+          transform 0.2s,
+          border-color 0.2s;
+      }
+      .stat-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--accent);
+      }
+      .stat-card .stat-value {
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      .stat-card .stat-label {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .stat-card.green .stat-value {
+        color: var(--green);
+      }
+      .stat-card.red .stat-value {
+        color: var(--red);
+      }
+      .stat-card.yellow .stat-value {
+        color: var(--yellow);
+      }
+      .stat-card.blue .stat-value {
+        color: var(--blue);
+      }
+
+      /* 操作栏 */
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .toolbar h2 {
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      /* 分类筛选 */
+      .filter-tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .filter-tab {
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--text-dim);
+        transition: all 0.2s;
+        user-select: none;
+      }
+      .filter-tab:hover {
+        background: var(--surface2);
+        color: var(--text);
+      }
+      .filter-tab.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      .filter-tab .tab-count {
+        display: inline-block;
+        min-width: 18px;
+        height: 18px;
+        line-height: 18px;
+        text-align: center;
+        font-size: 11px;
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.15);
+        margin-left: 6px;
+        padding: 0 5px;
+      }
+      .filter-tab.active .tab-count {
+        background: rgba(255, 255, 255, 0.25);
+      }
+
+      /* 账号列表 */
+      .account-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .account-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        transition:
+          border-color 0.2s,
+          background 0.2s;
+      }
+      .account-card:hover {
+        border-color: var(--accent);
+        background: var(--surface2);
+      }
+      .account-icon {
+        font-size: 22px;
+        flex-shrink: 0;
+      }
+      .account-info {
+        flex: 1;
+        min-width: 0;
+      }
+      .account-email {
+        font-weight: 500;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .account-meta {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 2px;
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .account-error {
+        font-size: 12px;
+        color: var(--red);
+        margin-top: 4px;
+        padding: 6px 10px;
+        background: var(--red-bg);
+        border-radius: 6px;
+        word-break: break-all;
+      }
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .status-badge.active {
+        background: var(--green-bg);
+        color: var(--green);
+      }
+      .status-badge.error {
+        background: var(--red-bg);
+        color: var(--red);
+      }
+      .status-badge.disabled {
+        background: var(--yellow-bg);
+        color: var(--yellow);
+      }
+      .account-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      /* 日志 */
+      .log-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        height: calc(100vh - 200px);
+        display: flex;
+        flex-direction: column;
+      }
+      .log-header {
+        padding: 12px 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .log-header h3 {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .log-body {
+        padding: 14px 18px;
+        flex: 1;
+        overflow-y: auto;
+        font-family: "Consolas", "Courier New", monospace;
+        font-size: 13px;
+        line-height: 1.8;
+        color: var(--text-dim);
+        background: #00000022;
+      }
+      .log-body .log-line {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .log-body .log-line.info {
+        color: var(--text);
+      }
+      .log-body .log-line.success {
+        color: var(--green);
+      }
+      .log-body .log-line.error {
+        color: var(--red);
+      }
+      .log-body .log-line.warn {
+        color: var(--yellow);
+      }
+
+      /* 加载遮罩 */
+      .loading-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 17, 23, 0.7);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+      }
+      .loading-overlay.show {
+        opacity: 1;
+        pointer-events: all;
+      }
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 3px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* 空状态 */
+      .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-dim);
+      }
+      .empty-state .emoji {
+        font-size: 48px;
+        margin-bottom: 12px;
+      }
+
+      /* 响应式 */
+      @media (max-width: 1024px) {
+        .main-layout {
+          grid-template-columns: 1fr;
+        }
+        .log-panel {
+          height: 300px;
+          margin-top: 20px;
+        }
+        .sidebar-area {
+          position: static;
+        }
+      }
+
+      @media (max-width: 768px) {
+        .header {
+          padding: 16px;
+        }
+        .container {
+          padding: 16px;
+        }
+        .config-bar {
+          flex-direction: column;
+        }
+        .config-bar .field {
+          min-width: auto;
+        }
+        .account-card {
+          flex-wrap: wrap;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 启动加载遮罩：覆盖一切，判断登录状态后移除 -->
+    <div
+      id="bootOverlay"
+      style="
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div class="spinner"></div>
+    </div>
+
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+    </div>
+
+    <div class="header">
+      <h1>🛡️ CPA 认证文件管理</h1>
+      <div class="header-actions">
+        <button
+          class="btn btn-outline"
+          onclick="if (confirm('确认登出？')) logout();"
+          id="btnLogout"
+          style="display: none; font-size: 12px; padding: 4px 10px"
+        >
+          🚪 登出
+        </button>
+        <span class="connection-badge loading" id="connBadge">
+          <span class="dot loading" id="connDot"></span>
+          <span id="connText">未连接</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- 登录遮罩（默认隐藏，boot 判断后显示） -->
+    <div
+      id="loginOverlay"
+      style="
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: var(--bg);
+        display: none;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      <div
+        style="
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          padding: 40px;
+          text-align: center;
+          max-width: 360px;
+          width: 90%;
+        "
+      >
+        <div style="font-size: 48px; margin-bottom: 16px">🔐</div>
+        <h2 style="margin: 0 0 8px; font-size: 20px; color: var(--text)">
+          访问验证
+        </h2>
+        <p style="font-size: 13px; color: var(--text-dim); margin: 0 0 20px">
+          请输入 API 地址和管理密钥
+        </p>
+        <input
+          type="text"
+          id="loginBase"
+          placeholder="API 地址 (https://...)"
+          style="
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+          "
+        />
+        <div style="position: relative">
+          <input
+            type="password"
+            id="loginKey"
+            placeholder="Management Key"
+            style="
+              width: 100%;
+              padding: 10px 40px 10px 14px;
+              background: var(--surface2);
+              border: 1px solid var(--border);
+              border-radius: 8px;
+              color: var(--text);
+              font-size: 14px;
+              outline: none;
+              box-sizing: border-box;
+            "
+            onkeydown="if (event.key === 'Enter') doLogin();"
+          />
+          <button
+            type="button"
+            onclick="toggleKeyVisibility()"
+            id="btnToggleKey"
+            style="
+              position: absolute;
+              right: 8px;
+              top: 50%;
+              transform: translateY(-50%);
+              background: none;
+              border: none;
+              color: var(--text-dim);
+              cursor: pointer;
+              font-size: 16px;
+              padding: 4px;
+              line-height: 1;
+              opacity: 0.6;
+              transition: opacity 0.2s;
+            "
+            onmouseenter="this.style.opacity = '1'"
+            onmouseleave="this.style.opacity = '0.6'"
+            title="显示/隐藏密钥"
+          >
+            👁
+          </button>
+        </div>
+        <div
+          id="loginError"
+          style="
+            color: #ef4444;
+            font-size: 12px;
+            margin-top: 8px;
+            min-height: 18px;
+          "
+        ></div>
+        <label
+          style="
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 12px;
+            font-size: 13px;
+            color: var(--text-dim);
+            cursor: pointer;
+            user-select: none;
+          "
+        >
+          <input
+            type="checkbox"
+            id="loginRemember"
+            style="accent-color: var(--accent)"
+          />
+          记住密码
+        </label>
+        <button
+          class="btn btn-primary"
+          onclick="doLogin()"
+          style="width: 100%; margin-top: 12px; justify-content: center"
+        >
+          登录
+        </button>
+      </div>
+    </div>
+
+    <div class="container">
+      <!-- 配置 -->
+      <div class="config-bar">
+        <div class="field small">
+          <label
+            >目标数
+            <span class="tooltip-wrap"
+              ><span class="tip-icon">❓</span
+              ><span class="tip-text">自动维持启用的账号数量</span></span
+            ></label
+          >
+          <input
+            type="number"
+            id="cfgTarget"
+            value="5"
+            min="1"
+            max="50"
+            onfocus="this.dataset.prev = this.value"
+            onchange="confirmSaveConfig(this)"
+          />
+        </div>
+        <div class="field small">
+          <label
+            >超时(秒)
+            <span class="tooltip-wrap"
+              ><span class="tip-icon">❓</span
+              ><span class="tip-text">API 请求超时时间，单位秒</span></span
+            ></label
+          >
+          <input
+            type="number"
+            id="cfgTimeout"
+            value="30"
+            min="1"
+            max="300"
+            onfocus="this.dataset.prev = this.value"
+            onchange="confirmSaveConfig(this)"
+          />
+        </div>
+        <button class="btn btn-primary" onclick="refresh()">
+          🔄 连接 / 刷新
+        </button>
+      </div>
+
+      <!-- 统计 -->
+      <div class="stats" id="statsArea"></div>
+
+      <div class="main-layout">
+        <div class="content-area">
+          <!-- 操作栏 -->
+          <div class="toolbar">
+            <h2>📂 认证文件列表</h2>
+            <div style="display: flex; gap: 8px; align-items: center">
+              <input
+                type="text"
+                id="searchInput"
+                placeholder="🔍 搜索账号..."
+                oninput="onSearch()"
+                style="
+                  padding: 7px 12px;
+                  background: var(--surface2);
+                  border: 1px solid var(--border);
+                  border-radius: 8px;
+                  color: var(--text);
+                  font-size: 13px;
+                  outline: none;
+                  width: 180px;
+                  transition:
+                    border-color 0.2s,
+                    width 0.2s;
+                "
+                onfocus="
+                  this.style.borderColor = 'var(--accent)';
+                  this.style.width = '220px';
+                "
+                onblur="
+                  this.style.borderColor = 'var(--border)';
+                  this.style.width = '180px';
+                "
+              />
+              <button
+                class="btn btn-primary"
+                onclick="
+                  if (confirm('确认执行自动管理？将自动启用/禁用账号'))
+                    runAutoManage();
+                "
+                id="btnAuto"
+              >
+                ⚡ 自动管理
+              </button>
+              <button
+                class="btn btn-outline"
+                onclick="
+                  if (
+                    confirm(
+                      patrolTimer ? '确认停止巡检？' : '确认开启定时巡检？',
+                    )
+                  )
+                    togglePatrol();
+                "
+                id="btnPatrol"
+              >
+                🔄 定时巡检
+              </button>
+              <input
+                type="number"
+                id="patrolInterval"
+                value="180"
+                min="10"
+                max="3600"
+                style="
+                  width: 55px;
+                  padding: 6px 8px;
+                  background: var(--surface2);
+                  border: 1px solid var(--border);
+                  border-radius: 6px;
+                  color: var(--text);
+                  font-size: 12px;
+                  text-align: center;
+                  outline: none;
+                "
+                onfocus="this.dataset.prev = this.value"
+                onchange="confirmSaveConfig(this)"
+              />
+              <span style="font-size: 11px; color: var(--text-dim)">秒</span>
+              <span
+                id="patrolStatus"
+                style="font-size: 12px; color: var(--text-dim); min-width: 60px"
+              ></span>
+              <button class="btn btn-outline" onclick="refresh()">
+                🔄 刷新
+              </button>
+            </div>
+          </div>
+
+          <!-- 分类筛选 -->
+          <div class="filter-tabs" id="filterTabs"></div>
+
+          <!-- 账号列表 -->
+          <div id="accountList">
+            <div class="empty-state">
+              <div class="emoji">🔌</div>
+              <p>点击「连接 / 刷新」开始</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="sidebar-area">
+          <!-- 操作日志 -->
+          <div class="log-panel">
+            <div class="log-header">
+              <h3>📜 操作日志</h3>
+              <button
+                class="btn btn-outline"
+                onclick="if (confirm('确认清除所有日志？')) clearLog();"
+                style="padding: 4px 10px; font-size: 12px"
+              >
+                清除
+              </button>
+            </div>
+            <div class="log-body" id="logBody">
+              <div class="log-line info">等待操作...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ============================================================
+      // 密钥显示/隐藏切换
+      // ============================================================
+
+      function toggleKeyVisibility() {
+        const input = document.getElementById("loginKey");
+        const btn = document.getElementById("btnToggleKey");
+        if (input.type === "password") {
+          input.type = "text";
+          btn.textContent = "🔒";
+          btn.title = "隐藏密钥";
+        } else {
+          input.type = "password";
+          btn.textContent = "👁";
+          btn.title = "显示密钥";
+        }
+      }
+
+      // ============================================================
+      // 加密工具（XOR + Base64，与 Cli-Proxy-API-Management-Center 同源）
+      // ============================================================
+
+      const ENC_PREFIX = "enc::v1::";
+      const SECRET_SALT = "cpa-management::secure-storage";
+      let _cachedKeyBytes = null;
+
+      function _encodeText(text) {
+        return new TextEncoder().encode(text);
+      }
+      function _decodeText(bytes) {
+        return new TextDecoder().decode(bytes);
+      }
+      function _getKeyBytes() {
+        if (_cachedKeyBytes) return _cachedKeyBytes;
+        try {
+          _cachedKeyBytes = _encodeText(
+            `${SECRET_SALT}|${location.host}|${navigator.userAgent}`,
+          );
+        } catch {
+          _cachedKeyBytes = _encodeText(SECRET_SALT);
+        }
+        return _cachedKeyBytes;
+      }
+      function _xor(data, key) {
+        const out = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i++)
+          out[i] = data[i] ^ key[i % key.length];
+        return out;
+      }
+      function _toBase64(bytes) {
+        let bin = "";
+        for (let i = 0; i < bytes.length; i++)
+          bin += String.fromCharCode(bytes[i]);
+        return btoa(bin);
+      }
+      function _fromBase64(b64) {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+      }
+      function encryptValue(value) {
+        if (!value) return value;
+        try {
+          return (
+            ENC_PREFIX + _toBase64(_xor(_encodeText(value), _getKeyBytes()))
+          );
+        } catch {
+          return value;
+        }
+      }
+      function decryptValue(payload) {
+        if (!payload || !payload.startsWith(ENC_PREFIX)) return payload;
+        try {
+          return _decodeText(
+            _xor(_fromBase64(payload.slice(ENC_PREFIX.length)), _getKeyBytes()),
+          );
+        } catch {
+          return payload;
+        }
+      }
+
+      // ============================================================
+      // 凭据持久化（localStorage 加密存储）
+      // ============================================================
+
+      const CRED_STORAGE_KEY = "cpa_credentials";
+
+      function saveCredentials(base, key) {
+        const data = JSON.stringify({ base, key });
+        localStorage.setItem(CRED_STORAGE_KEY, encryptValue(data));
+        localStorage.setItem("cpa_logged_in", "true");
+      }
+
+      function loadCredentials() {
+        const raw = localStorage.getItem(CRED_STORAGE_KEY);
+        if (!raw) return null;
+        try {
+          return JSON.parse(decryptValue(raw));
+        } catch {
+          return null;
+        }
+      }
+
+      function clearCredentials() {
+        localStorage.removeItem(CRED_STORAGE_KEY);
+        localStorage.removeItem("cpa_logged_in");
+      }
+
+      // ============================================================
+      // 鉴权
+      // ============================================================
+
+      function getToken() {
+        return sessionStorage.getItem("cpa_key") || "";
+      }
+
+      function authHeaders() {
+        return {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getToken()}`,
+        };
+      }
+
+      async function doLogin() {
+        const errorEl = document.getElementById("loginError");
+        const base = document
+          .getElementById("loginBase")
+          .value.trim()
+          .replace(/\/+$/, "");
+        const key = document.getElementById("loginKey").value.trim();
+        const remember = document.getElementById("loginRemember").checked;
+        if (!base || !key) {
+          errorEl.textContent = "请填写所有字段";
+          return;
+        }
+
+        try {
+          const resp = await fetch("/auth/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ base, key }),
+          });
+          if (resp.ok) {
+            sessionStorage.setItem("cpa_key", key);
+            // 记住密码：加密存入 localStorage
+            if (remember) {
+              saveCredentials(base, key);
+            } else {
+              clearCredentials();
+            }
+            document.getElementById("loginOverlay").style.display = "none";
+            document.getElementById("btnLogout").style.display = "";
+            initApp();
+          } else {
+            const data = await resp.json().catch(() => ({}));
+            errorEl.textContent = data.error || "地址或密钥无效";
+          }
+        } catch {
+          errorEl.textContent = "连接失败";
+        }
+      }
+
+      // 自动恢复会话（从 localStorage 读取加密凭据并验证）
+      async function restoreSession() {
+        if (localStorage.getItem("cpa_logged_in") !== "true") return false;
+        const cred = loadCredentials();
+        if (!cred || !cred.base || !cred.key) return false;
+        try {
+          const resp = await fetch("/auth/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ base: cred.base, key: cred.key }),
+          });
+          if (resp.ok) {
+            sessionStorage.setItem("cpa_key", cred.key);
+            return true;
+          }
+        } catch {}
+        return false;
+      }
+
+      function logout() {
+        sessionStorage.removeItem("cpa_key");
+        clearCredentials();
+        location.reload();
+      }
+
+      async function checkAuth() {
+        const key = getToken();
+        if (!key) return false;
+        try {
+          const resp = await fetch("/api/config", { headers: authHeaders() });
+          return resp.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      // ============================================================
+      // API 通信
+      // ============================================================
+
+      const API_PREFIX = "/api";
+
+      function getConfig() {
+        return {
+          target: parseInt(document.getElementById("cfgTarget").value) || 8,
+          timeout: parseInt(document.getElementById("cfgTimeout").value) || 30,
+          patrolInterval:
+            parseInt(document.getElementById("patrolInterval").value) || 180,
+        };
+      }
+
+      function saveConfig() {
+        const cfg = {
+          ...getConfig(),
+          patrolActive: !!patrolTimer,
+          patrolLastRun: _patrolLastRun,
+        };
+        // fire-and-forget 写入后端
+        fetch("/local/config", {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify(cfg),
+        }).catch(() => {});
+      }
+
+      function confirmSaveConfig(inputEl) {
+        if (confirm("确认修改配置？")) {
+          saveConfig();
+        } else {
+          // 回滚到修改前的值
+          if (inputEl && inputEl.dataset.prev !== undefined) {
+            inputEl.value = inputEl.dataset.prev;
+          }
+        }
+      }
+
+      async function loadConfig() {
+        try {
+          const resp = await fetch("/local/config", { headers: authHeaders() });
+          if (resp.ok) {
+            const cfg = await resp.json();
+            if (cfg.target)
+              document.getElementById("cfgTarget").value = cfg.target;
+            if (cfg.timeout)
+              document.getElementById("cfgTimeout").value = cfg.timeout;
+            if (cfg.patrolInterval)
+              document.getElementById("patrolInterval").value =
+                cfg.patrolInterval;
+            // 恢复巡检状态到内存变量
+            _patrolLastRun = cfg.patrolLastRun || 0;
+            return cfg;
+          }
+        } catch {}
+        return null;
+      }
+
+      async function apiRequest(method, endpoint, body) {
+        const { timeout } = getConfig();
+        const url = API_PREFIX + endpoint;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout * 1000);
+
+        const opts = {
+          method,
+          headers: authHeaders(),
+          signal: controller.signal,
+        };
+
+        if (body !== undefined) opts.body = JSON.stringify(body);
+
+        try {
+          const resp = await fetch(url, opts);
+          clearTimeout(timeoutId);
+
+          if (!resp.ok) {
+            let errBody;
+            try {
+              errBody = await resp.json();
+            } catch {}
+            throw Object.assign(
+              new Error(
+                errBody?.message || errBody?.error || `HTTP ${resp.status}`,
+              ),
+              { status: resp.status, data: errBody },
+            );
+          }
+          const text = await resp.text();
+          return text ? JSON.parse(text) : null;
+        } catch (err) {
+          if (err.name === "AbortError") {
+            throw new Error(`请求超时 (${timeout}s)`);
+          }
+          throw err;
+        }
+      }
+
+      // ============================================================
+      // 错误解析（与 CLI 一致）
+      // ============================================================
+
+      function parseStatusError(msg) {
+        if (!msg) return null;
+        try {
+          const obj = JSON.parse(msg);
+          const err = obj?.error;
+          if (!err) return null;
+          const reasons = [];
+          let validationUrl = "";
+          if (Array.isArray(err.details)) {
+            for (const d of err.details) {
+              if (d.reason) reasons.push(d.reason);
+              if (d.metadata?.validation_url)
+                validationUrl = d.metadata.validation_url;
+            }
+          }
+          return {
+            code: err.code || 0,
+            message: err.message || "",
+            status: err.status || "",
+            reasons,
+            validationUrl,
+          };
+        } catch {
+          return null;
+        }
+      }
+
+      function shouldDisable(file, parsed) {
+        if (!parsed) return false;
+        return parsed.code === 403 && parsed.reasons.includes("TOS_VIOLATION");
+      }
+
+      function isCleanDisabled(file) {
+        if (!file.disabled && file.status !== "disabled") return false;
+        const parsed = parseStatusError(file.status_message);
+        if (shouldDisable(file, parsed)) return false;
+        return true;
+      }
+
+      function hasValidationUrl(file) {
+        const parsed = parseStatusError(file.status_message);
+        return parsed && parsed.validationUrl;
+      }
+
+      function aggregateUsageByAccount(usageData) {
+        const map = new Map();
+        const apis = usageData?.usage?.apis;
+        if (!apis) return map;
+        for (const apiData of Object.values(apis)) {
+          const models = apiData.models;
+          if (!models) continue;
+          for (const modelData of Object.values(models)) {
+            if (!Array.isArray(modelData.details)) continue;
+            for (const record of modelData.details) {
+              const email = record.source;
+              if (!email) continue;
+              let entry = map.get(email);
+              if (!entry) {
+                entry = { success: 0, failed: 0, tokens: 0 };
+                map.set(email, entry);
+              }
+              if (record.failed) entry.failed++;
+              else entry.success++;
+              entry.tokens += record.tokens?.total_tokens || 0;
+            }
+          }
+        }
+        return map;
+      }
+
+      function sortCleanPool(pool, usageMap = new Map()) {
+        const prioMap = getAccountPriority();
+        // 过滤掉 block 账号
+        const filtered = pool.filter((f) => prioMap[f.account] !== "block");
+        return filtered.sort((a, b) => {
+          const aPrio = prioMap[a.account] === "prefer" ? 1 : 0;
+          const bPrio = prioMap[b.account] === "prefer" ? 1 : 0;
+          if (bPrio !== aPrio) return bPrio - aPrio;
+          const aUsage = usageMap.get(a.account) || { success: 0 };
+          const bUsage = usageMap.get(b.account) || { success: 0 };
+          if (bUsage.success !== aUsage.success)
+            return bUsage.success - aUsage.success;
+          const aTime = a.last_refresh ? new Date(a.last_refresh).getTime() : 0;
+          const bTime = b.last_refresh ? new Date(b.last_refresh).getTime() : 0;
+          return bTime - aTime;
+        });
+      }
+
+      // ============================================================
+      // 账号优先级管理
+      // ============================================================
+
+      // 优先级内存缓存（从后端加载）
+      let _priorityCache = {};
+
+      function getAccountPriority() {
+        return _priorityCache;
+      }
+
+      async function loadPriorityFromServer() {
+        try {
+          const data = await fetch("/local/priority", {
+            headers: authHeaders(),
+          }).then((r) => r.json());
+          _priorityCache = data || {};
+        } catch {
+          _priorityCache = {};
+        }
+      }
+
+      function setAccountPriority(account, tag) {
+        if (!tag || tag === "normal") {
+          delete _priorityCache[account];
+        } else {
+          _priorityCache[account] = tag;
+        }
+        // 异步保存到后端
+        fetch("/local/priority", {
+          method: "PUT",
+          headers: authHeaders(),
+          body: JSON.stringify(_priorityCache),
+        }).catch(() => {});
+      }
+
+      function cycleAccountPriority(account) {
+        const current = _priorityCache[account] || "normal";
+        const next =
+          current === "normal"
+            ? "prefer"
+            : current === "prefer"
+              ? "block"
+              : "normal";
+        setAccountPriority(account, next);
+        renderAccounts(allFiles);
+        renderFilterTabs(allFiles);
+        renderStats(allFiles);
+      }
+
+      function getPriorityBadge(account) {
+        const map = getAccountPriority();
+        const tag = map[account];
+        if (tag === "prefer")
+          return '<span style="color:#fbbf24;font-size:11px;margin-left:6px;" title="优先启用">⭐优先</span>';
+        if (tag === "block")
+          return '<span style="color:#ef4444;font-size:11px;margin-left:6px;" title="永不启用">🚫禁止</span>';
+        return "";
+      }
+
+      // ============================================================
+      // 状态管理
+      // ============================================================
+
+      let allFiles = [];
+      let currentFilter = "all";
+      let searchKeyword = "";
+      let usageMap = new Map();
+      let patrolTimer = null;
+      let patrolCountdown = 0;
+      let countdownTimer = null;
+      let _patrolLastRun = 0;
+      const MAX_LOG_ENTRIES = 200;
+
+      function getPatrolInterval() {
+        return parseInt(document.getElementById("patrolInterval").value) || 180;
+      }
+
+      function togglePatrol() {
+        if (patrolTimer) {
+          stopPatrol();
+        } else {
+          startPatrol();
+        }
+      }
+
+      function startPatrol(resumeCountdown = 0) {
+        const interval = getPatrolInterval();
+        const btn = document.getElementById("btnPatrol");
+        btn.textContent = "⏹️ 停止巡检";
+        btn.classList.remove("btn-outline");
+        btn.classList.add("btn-primary");
+
+        // 恢复时使用剩余时间，否则使用完整间隔
+        patrolCountdown = resumeCountdown > 0 ? resumeCountdown : interval;
+        if (!resumeCountdown) {
+          log(`🔄 定时巡检已开启，间隔 ${interval}s`, "info");
+        }
+        updateCountdownDisplay();
+        countdownTimer = setInterval(() => {
+          patrolCountdown--;
+          updateCountdownDisplay();
+          if (patrolCountdown <= 0) patrolCountdown = getPatrolInterval();
+        }, 1000);
+        patrolTimer = setInterval(async () => {
+          _patrolLastRun = Date.now();
+          saveConfig();
+          log("--- 定时巡检触发 ---", "info");
+          await runAutoManage();
+          patrolCountdown = getPatrolInterval();
+        }, patrolCountdown * 1000);
+        // 第一轮用剩余时间后，后续切换回正常间隔
+        if (resumeCountdown > 0 && resumeCountdown !== interval) {
+          setTimeout(() => {
+            if (!patrolTimer) return;
+            clearInterval(patrolTimer);
+            patrolTimer = setInterval(async () => {
+              _patrolLastRun = Date.now();
+              saveConfig();
+              log("--- 定时巡检触发 ---", "info");
+              await runAutoManage();
+              patrolCountdown = getPatrolInterval();
+            }, interval * 1000);
+          }, resumeCountdown * 1000);
+        }
+        // 保存巡检状态到后端
+        _patrolLastRun = Date.now();
+        saveConfig();
+      }
+
+      function stopPatrol() {
+        clearInterval(patrolTimer);
+        clearInterval(countdownTimer);
+        patrolTimer = null;
+        countdownTimer = null;
+        patrolCountdown = 0;
+        const btn = document.getElementById("btnPatrol");
+        btn.textContent = "🔄 定时巡检";
+        btn.classList.remove("btn-primary");
+        btn.classList.add("btn-outline");
+        document.getElementById("patrolStatus").textContent = "";
+        log("⏹️ 定时巡检已停止", "info");
+        // 保存停止状态到后端
+        saveConfig();
+      }
+
+      function updateCountdownDisplay() {
+        const min = Math.floor(patrolCountdown / 60);
+        const sec = patrolCountdown % 60;
+        document.getElementById("patrolStatus").textContent =
+          `下次: ${min}:${String(sec).padStart(2, "0")}`;
+      }
+
+      function onSearch() {
+        searchKeyword = (document.getElementById("searchInput").value || "")
+          .trim()
+          .toLowerCase();
+        renderAccounts(allFiles);
+      }
+
+      function setConnection(state, text) {
+        const badge = document.getElementById("connBadge");
+        const dot = document.getElementById("connDot");
+        const label = document.getElementById("connText");
+        badge.className = `connection-badge ${state}`;
+        dot.className = `dot ${state}`;
+        label.textContent = text;
+      }
+
+      function showLoading(v) {
+        document.getElementById("loadingOverlay").classList.toggle("show", v);
+      }
+
+      // ============================================================
+      // 日志
+      // ============================================================
+
+      function log(msg, type = "info") {
+        const body = document.getElementById("logBody");
+        const line = document.createElement("div");
+        line.className = `log-line ${type}`;
+        const ts = new Date().toLocaleTimeString();
+        const text = `[${ts}] ${msg}`;
+        line.textContent = text;
+        body.appendChild(line);
+        body.scrollTop = body.scrollHeight;
+        // 持久化到后端
+        fetch("/local/logs", {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({ text, cls: line.className }),
+        }).catch(() => {});
+      }
+      function clearLog() {
+        document.getElementById("logBody").innerHTML = "";
+        fetch("/local/logs", {
+          method: "DELETE",
+          headers: authHeaders(),
+        }).catch(() => {});
+      }
+      async function restoreLogs() {
+        try {
+          const data = await fetch("/local/logs", {
+            headers: authHeaders(),
+          }).then((r) => r.json());
+          if (!Array.isArray(data) || data.length === 0) return;
+          const body = document.getElementById("logBody");
+          body.innerHTML = "";
+          for (const item of data) {
+            const line = document.createElement("div");
+            line.className = item.cls || "log-line info";
+            line.textContent = item.text;
+            body.appendChild(line);
+          }
+          body.scrollTop = body.scrollHeight;
+        } catch {}
+      }
+
+      // ============================================================
+      // 渲染
+      // ============================================================
+
+      function renderStats(files) {
+        const enabled = files.filter(
+          (f) => !f.disabled && f.status !== "disabled",
+        );
+        const healthy = enabled.filter((f) => f.status !== "error");
+        const errors = enabled.filter((f) => f.status === "error");
+        const disabled = files.filter(
+          (f) => f.disabled || f.status === "disabled",
+        );
+        const cleanPool = files.filter(isCleanDisabled);
+        const target =
+          parseInt(document.getElementById("cfgTarget").value) || 5;
+
+        document.getElementById("statsArea").innerHTML = `
+    <div class="stat-card"><div class="stat-value">${files.length}</div><div class="stat-label">总计</div></div>
+    <div class="stat-card green"><div class="stat-value">${enabled.length}</div><div class="stat-label">启用</div></div>
+    <div class="stat-card blue"><div class="stat-value">${healthy.length}</div><div class="stat-label">正常</div></div>
+    <div class="stat-card red"><div class="stat-value">${errors.length}</div><div class="stat-label">错误</div></div>
+    <div class="stat-card yellow"><div class="stat-value">${disabled.length}</div><div class="stat-label">禁用</div></div>
+    <div class="stat-card"><div class="stat-value">${cleanPool.length}</div><div class="stat-label">候补池</div></div>
+    <div class="stat-card ${enabled.length === target ? "green" : "red"}">
+      <div class="stat-value">${target}</div><div class="stat-label">目标</div>
+    </div>
+  `;
+      }
+
+      function getFilteredFiles(files, filter) {
+        switch (filter) {
+          case "enabled":
+            return files.filter((f) => !f.disabled && f.status !== "disabled");
+          case "healthy":
+            return files.filter(
+              (f) =>
+                !f.disabled && f.status !== "disabled" && f.status !== "error",
+            );
+          case "error":
+            return files.filter((f) => f.status === "error");
+          case "disabled":
+            return files.filter((f) => f.disabled || f.status === "disabled");
+          case "clean":
+            return files.filter(isCleanDisabled);
+          case "validation":
+            return files.filter(hasValidationUrl);
+          default:
+            return files;
+        }
+      }
+
+      function renderFilterTabs(files) {
+        const enabled = files.filter(
+          (f) => !f.disabled && f.status !== "disabled",
+        );
+        const healthy = enabled.filter((f) => f.status !== "error");
+        const errors = files.filter((f) => f.status === "error");
+        const disabled = files.filter(
+          (f) => f.disabled || f.status === "disabled",
+        );
+        const clean = files.filter(isCleanDisabled);
+
+        const validation = files.filter(hasValidationUrl);
+
+        const tabs = [
+          { key: "all", label: "全部", count: files.length },
+          { key: "enabled", label: "🟢 启用", count: enabled.length },
+          { key: "healthy", label: "✅ 正常", count: healthy.length },
+          { key: "error", label: "❌ 错误", count: errors.length },
+          { key: "disabled", label: "⏸️ 禁用", count: disabled.length },
+          { key: "clean", label: "💤 候补", count: clean.length },
+          { key: "validation", label: "🔗 需验证", count: validation.length },
+        ];
+
+        document.getElementById("filterTabs").innerHTML = tabs
+          .map(
+            (t) =>
+              `<button class="filter-tab ${currentFilter === t.key ? "active" : ""}" onclick="setFilter('${t.key}')">${t.label}<span class="tab-count">${t.count}</span></button>`,
+          )
+          .join("");
+      }
+
+      function setFilter(filter) {
+        currentFilter = filter;
+        renderFilterTabs(allFiles);
+        renderAccounts(allFiles);
+      }
+
+      function renderAccounts(files) {
+        const list = document.getElementById("accountList");
+        let filtered = getFilteredFiles(files, currentFilter);
+
+        // 搜索过滤
+        if (searchKeyword) {
+          filtered = filtered.filter((f) =>
+            (f.account || f.email || f.name || "")
+              .toLowerCase()
+              .includes(searchKeyword),
+          );
+        }
+
+        if (filtered.length === 0) {
+          const msg = searchKeyword
+            ? `没有匹配「${searchKeyword}」的账号`
+            : "该分类下没有账号";
+          list.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><p>${msg}</p></div>`;
+          return;
+        }
+
+        list.innerHTML = filtered
+          .map((f) => {
+            const i = files.indexOf(f);
+            const parsed = parseStatusError(f.status_message);
+            const isEnabled = !f.disabled && f.status !== "disabled";
+            const isError = f.status === "error";
+            const isDisabled = f.disabled || f.status === "disabled";
+            const clean = isCleanDisabled(f);
+
+            const icon = shouldDisable(f, parsed)
+              ? "🚫"
+              : clean
+                ? "💤"
+                : isDisabled
+                  ? "⏸️"
+                  : isError
+                    ? "❌"
+                    : "✅";
+
+            const badgeClass = isDisabled
+              ? "disabled"
+              : isError
+                ? "error"
+                : "active";
+            const badgeText = isDisabled ? "DISABLED" : f.status.toUpperCase();
+
+            let errorHtml = "";
+            if (isError && parsed) {
+              const reasons = parsed.reasons.length
+                ? ` (${parsed.reasons.join(", ")})`
+                : "";
+              errorHtml = `<div class="account-error">${parsed.code}: ${parsed.message.trim().slice(0, 120)}${reasons}</div>`;
+              if (parsed.validationUrl) {
+                errorHtml += `<div style="margin-top:4px;"><a href="${parsed.validationUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-size:12px;text-decoration:underline;">🔗 点击验证账号</a></div>`;
+              }
+            }
+
+            const tags = [];
+            if (shouldDisable(f, parsed)) tags.push("待禁用");
+            if (clean) tags.push("候补");
+            const tagStr = tags
+              .map(
+                (t) =>
+                  `<span style="color:var(--accent);margin-left:6px;font-size:11px;">#${t}</span>`,
+              )
+              .join("");
+
+            return `
+      <div class="account-card" data-index="${i}">
+        <div class="account-icon">${icon}</div>
+        <div class="account-info">
+          <div class="account-email">${f.account || f.email || f.name}${tagStr}${getPriorityBadge(f.account)}</div>
+          <div class="account-meta">
+            <span>Provider: ${f.provider || "-"}</span>
+            <span>Type: ${f.type || "-"}</span>
+            ${f.last_refresh ? `<span>刷新: ${new Date(f.last_refresh).toLocaleString()}</span>` : ""}
+          </div>
+          ${errorHtml}
+        </div>
+        <span class="status-badge ${badgeClass}">${badgeText}</span>
+        <div class="account-actions">
+          ${
+            isEnabled
+              ? `<button class="btn btn-danger" onclick="if(confirm('确认禁用账号 ${(f.account || f.email || f.name || "").replace(/'/g, "\\'")}？')) toggleAccount(${i}, true)" title="禁用">⏸️</button>`
+              : `<button class="btn btn-success" onclick="if(confirm('确认启用账号 ${(f.account || f.email || f.name || "").replace(/'/g, "\\'")}？')) toggleAccount(${i}, false)" title="启用">▶️</button>`
+          }
+          ${
+            isDisabled
+              ? `<button class="btn btn-outline" onclick="cycleAccountPriority('${f.account}')" title="切换优先级" style="padding:4px 8px;font-size:11px;">🏷️</button>`
+              : ""
+          }
+        </div>
+      </div>
+    `;
+          })
+          .join("");
+      }
+
+      // ============================================================
+      // 操作
+      // ============================================================
+
+      async function refresh() {
+        showLoading(true);
+        log("正在连接...");
+        try {
+          // 验证连接
+          await apiRequest("GET", "/config");
+          setConnection("ok", "已连接");
+          log("连接成功", "success");
+
+          // 获取认证文件
+          const data = await apiRequest("GET", "/auth-files");
+          allFiles = data?.files ?? (Array.isArray(data) ? data : []);
+          log(`获取到 ${allFiles.length} 个认证文件`, "info");
+
+          renderStats(allFiles);
+          renderFilterTabs(allFiles);
+          renderAccounts(allFiles);
+        } catch (err) {
+          setConnection("err", "连接失败");
+          log(`连接失败: ${err.message}`, "error");
+        }
+        showLoading(false);
+      }
+
+      async function toggleAccount(index, disabled) {
+        const f = allFiles[index];
+        if (!f) return;
+        const action = disabled ? "禁用" : "启用";
+        log(`正在${action}: ${f.account}...`);
+        try {
+          await apiRequest("PATCH", "/auth-files/status", {
+            name: f.name,
+            disabled,
+          });
+          log(`已${action}: ${f.account}`, "success");
+          await refresh();
+        } catch (err) {
+          log(`${action}失败: ${f.account} - ${err.message}`, "error");
+        }
+      }
+
+      async function runAutoManage() {
+        const target =
+          parseInt(document.getElementById("cfgTarget").value) || 5;
+        const btn = document.getElementById("btnAuto");
+        btn.disabled = true;
+        log("===== 开始自动管理 =====", "info");
+
+        try {
+          // 1. 获取最新数据
+          const data = await apiRequest("GET", "/auth-files");
+          allFiles = data?.files ?? [];
+          const enabled = allFiles.filter(
+            (f) => !f.disabled && f.status !== "disabled",
+          );
+
+          // 2. 禁用 TOS_VIOLATION
+          let disabledCount = 0;
+          for (const f of enabled) {
+            const parsed = parseStatusError(f.status_message);
+            if (shouldDisable(f, parsed)) {
+              try {
+                await apiRequest("PATCH", "/auth-files/status", {
+                  name: f.name,
+                  disabled: true,
+                });
+                log(`🚫 已禁用(TOS): ${f.account}`, "warn");
+                disabledCount++;
+              } catch (err) {
+                log(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+              }
+            }
+          }
+
+          // 2.5 获取使用统计
+          try {
+            const usageData = await apiRequest("GET", "/usage");
+            usageMap = aggregateUsageByAccount(usageData);
+            log(`📊 已加载使用统计 (${usageMap.size} 个账号有记录)`, "info");
+          } catch {
+            log("⚠️ 获取使用统计失败，将仅按 last_refresh 排序", "warn");
+          }
+
+          // 3. 重新获取最新数据
+          const freshData = await apiRequest("GET", "/auth-files");
+          allFiles = freshData?.files ?? [];
+          const currentEnabled = allFiles.filter(
+            (f) => !f.disabled && f.status !== "disabled",
+          );
+          const cleanPool = sortCleanPool(
+            allFiles.filter(isCleanDisabled),
+            usageMap,
+          );
+
+          // 4. 维持目标数
+          if (currentEnabled.length < target && cleanPool.length > 0) {
+            const needed = Math.min(
+              target - currentEnabled.length,
+              cleanPool.length,
+            );
+            log(
+              `🔄 启用 ${needed} 个候补账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
+              "info",
+            );
+            for (let i = 0; i < needed; i++) {
+              try {
+                await apiRequest("PATCH", "/auth-files/status", {
+                  name: cleanPool[i].name,
+                  disabled: false,
+                });
+                log(`✅ 已启用: ${cleanPool[i].account}`, "success");
+              } catch (err) {
+                log(
+                  `❌ 启用失败: ${cleanPool[i].account} - ${err.message}`,
+                  "error",
+                );
+              }
+            }
+          } else if (currentEnabled.length > target) {
+            const excess = currentEnabled.length - target;
+            // 优先禁用 error
+            const errors = currentEnabled.filter((f) => f.status === "error");
+            const healthy = currentEnabled.filter((f) => f.status !== "error");
+            const toDeactivate = [...errors, ...healthy].slice(0, excess);
+            log(
+              `⏸️  禁用 ${toDeactivate.length} 个多余账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
+              "info",
+            );
+            for (const f of toDeactivate) {
+              try {
+                await apiRequest("PATCH", "/auth-files/status", {
+                  name: f.name,
+                  disabled: true,
+                });
+                log(`⏸️  已禁用: ${f.account}`, "warn");
+              } catch (err) {
+                log(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+              }
+            }
+          } else {
+            log(
+              `✅ 当前启用 ${currentEnabled.length} 个，符合目标 ${target} 个`,
+              "success",
+            );
+          }
+
+          log("===== 自动管理完成 =====", "success");
+        } catch (err) {
+          log(`自动管理失败: ${err.message}`, "error");
+        }
+
+        btn.disabled = false;
+        await refresh();
+      }
+
+      // 初始化应用（登录后调用）
+      async function initApp() {
+        const cfg = await loadConfig();
+        await Promise.all([restoreLogs(), loadPriorityFromServer()]);
+        // 从后端配置恢复巡检状态
+        if (cfg && cfg.patrolActive && !patrolTimer) {
+          const interval = getPatrolInterval();
+          const lastRun = cfg.patrolLastRun || 0;
+          const elapsed = Math.floor((Date.now() - lastRun) / 1000);
+          const remaining = Math.max(interval - elapsed, 0);
+          if (remaining <= 0) {
+            log(`🔄 恢复巡检，已超时 ${elapsed - interval}s，立即执行`, "info");
+            startPatrol();
+            runAutoManage();
+          } else {
+            log(`🔄 恢复巡检，${remaining}s 后执行下次`, "info");
+            startPatrol(remaining);
+          }
+        }
+        refresh();
+      }
+
+      // 页面加载
+      window.addEventListener("DOMContentLoaded", async () => {
+        // 0. 恢复登录表单状态（同步）
+        const savedCred = loadCredentials();
+        if (savedCred) {
+          if (savedCred.base)
+            document.getElementById("loginBase").value = savedCred.base;
+          document.getElementById("loginRemember").checked = true;
+        }
+
+        let loggedIn = false;
+
+        // 1. 先检查 sessionStorage 中的 token（当前标签页内有效）
+        if (await checkAuth()) {
+          loggedIn = true;
+        }
+        // 2. 尝试从 localStorage 恢复保存的凭据（记住密码）
+        else if (await restoreSession()) {
+          loggedIn = true;
+        }
+
+        // 3. 移除启动遮罩，显示正确页面
+        document.getElementById("bootOverlay").remove();
+        if (loggedIn) {
+          document.getElementById("btnLogout").style.display = "";
+          initApp();
+        } else {
+          document.getElementById("loginOverlay").style.display = "flex";
+        }
+      });
+    </script>
+  </body>
+</html>

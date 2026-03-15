@@ -1,0 +1,7 @@
+{
+  "target": 8,
+  "timeout": 30,
+  "patrolInterval": 180,
+  "patrolActive": false,
+  "patrolLastRun": 0
+}
