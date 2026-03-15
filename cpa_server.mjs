@@ -301,8 +301,14 @@ async function handleRequest(req, res) {
       return jsonResponse(res, loadLogs());
     }
     if (method === "POST") {
-      const entry = await readBody(req);
-      if (entry) appendLog(entry);
+      const body = await readBody(req);
+      if (body) {
+        // 兼容批量数组和单条对象
+        const entries = Array.isArray(body) ? body : [body];
+        const logs = loadLogs();
+        logs.push(...entries);
+        saveLogs(logs);
+      }
       return jsonResponse(res, { ok: true });
     }
     if (method === "DELETE") {

@@ -1,7 +1,8 @@
 # 运行时数据（持久化文件，不纳入版本控制）
-cpa_logs.json
-cpa_priority.json
-cpa_dashboard_config.json
+# 通配符匹配所有哈希后缀的变体（如 cpa_logs_f9edd33f.json）
+cpa_logs*.json
+cpa_priority*.json
+cpa_dashboard_config*.json
 
 # Docker 挂载的数据目录
 data/
@@ -9,6 +10,17 @@ data/
 # Node
 node_modules/
 
+# 设计文档（本地规划用，不入库）
+docs/plans/
+
 # 系统文件
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

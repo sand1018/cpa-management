@@ -1300,6 +1300,52 @@
 
     <script>
       // ============================================================
+      // 常量定义（集中管理，避免魔法值散落）
+      // ============================================================
+
+      // -- 存储键名 --
+      const STORAGE_KEY_CREDENTIALS = "cpa_credentials";
+      const STORAGE_KEY_LOGGED_IN = "cpa_logged_in";
+      const STORAGE_KEY_SESSION = "cpa_key";
+      const STORAGE_KEY_LAYOUT = "cpa_layout";
+
+      // -- API 端点 --
+      const ENDPOINT_API = "/api";
+      const ENDPOINT_AUTH_VERIFY = "/auth/verify";
+      const ENDPOINT_LOCAL_CONFIG = "/local/config";
+      const ENDPOINT_LOCAL_PRIORITY = "/local/priority";
+      const ENDPOINT_LOCAL_LOGS = "/local/logs";
+
+      // -- 默认配置值 --
+      const DEFAULT_TARGET = 5;
+      const DEFAULT_TIMEOUT = 30;
+      const DEFAULT_PATROL_INTERVAL = 180;
+      const LOG_FLUSH_DELAY_MS = 200;
+
+      // -- 错误判定 --
+      const TOS_VIOLATION_CODE = 403;
+      const TOS_VIOLATION_REASON = "TOS_VIOLATION";
+
+      // -- 优先级标签 --
+      const PRIORITY_NORMAL = "normal";
+      const PRIORITY_PREFER = "prefer";
+      const PRIORITY_BLOCK = "block";
+
+      // -- 账号状态值（后端 API 返回的 f.status）--
+      const STATUS_DISABLED = "disabled";
+      const STATUS_ERROR = "error";
+      const STATUS_ACTIVE = "active";
+
+      // -- 筛选器键名 --
+      const FILTER_ALL = "all";
+      const FILTER_ENABLED = "enabled";
+      const FILTER_HEALTHY = "healthy";
+      const FILTER_ERROR = "error";
+      const FILTER_DISABLED = "disabled";
+      const FILTER_CLEAN = "clean";
+      const FILTER_VALIDATION = "validation";
+
+      // ============================================================
       // 密钥显示/隐藏切换
       // ============================================================
 
@@ -1385,16 +1431,14 @@
       // 凭据持久化（localStorage 加密存储）
       // ============================================================
 
-      const CRED_STORAGE_KEY = "cpa_credentials";
-
       function saveCredentials(base, key) {
         const data = JSON.stringify({ base, key });
-        localStorage.setItem(CRED_STORAGE_KEY, encryptValue(data));
-        localStorage.setItem("cpa_logged_in", "true");
+        localStorage.setItem(STORAGE_KEY_CREDENTIALS, encryptValue(data));
+        localStorage.setItem(STORAGE_KEY_LOGGED_IN, "true");
       }
 
       function loadCredentials() {
-        const raw = localStorage.getItem(CRED_STORAGE_KEY);
+        const raw = localStorage.getItem(STORAGE_KEY_CREDENTIALS);
         if (!raw) return null;
         try {
           return JSON.parse(decryptValue(raw));
@@ -1404,8 +1448,8 @@
       }
 
       function clearCredentials() {
-        localStorage.removeItem(CRED_STORAGE_KEY);
-        localStorage.removeItem("cpa_logged_in");
+        localStorage.removeItem(STORAGE_KEY_CREDENTIALS);
+        localStorage.removeItem(STORAGE_KEY_LOGGED_IN);
       }
 
       // ============================================================
@@ -1413,7 +1457,7 @@
       // ============================================================
 
       function getToken() {
-        return sessionStorage.getItem("cpa_key") || "";
+        return sessionStorage.getItem(STORAGE_KEY_SESSION) || "";
       }
 
       function authHeaders() {
@@ -1437,13 +1481,13 @@
         }
 
         try {
-          const resp = await fetch("/auth/verify", {
+          const resp = await fetch(ENDPOINT_AUTH_VERIFY, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ base, key }),
           });
           if (resp.ok) {
-            sessionStorage.setItem("cpa_key", key);
+            sessionStorage.setItem(STORAGE_KEY_SESSION, key);
             // 记住密码：加密存入 localStorage
             if (remember) {
               saveCredentials(base, key);
@@ -1464,17 +1508,18 @@
 
       // 自动恢复会话（从 localStorage 读取加密凭据并验证）
       async function restoreSession() {
-        if (localStorage.getItem("cpa_logged_in") !== "true") return false;
+        if (localStorage.getItem(STORAGE_KEY_LOGGED_IN) !== "true")
+          return false;
         const cred = loadCredentials();
         if (!cred || !cred.base || !cred.key) return false;
         try {
-          const resp = await fetch("/auth/verify", {
+          const resp = await fetch(ENDPOINT_AUTH_VERIFY, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ base: cred.base, key: cred.key }),
           });
           if (resp.ok) {
-            sessionStorage.setItem("cpa_key", cred.key);
+            sessionStorage.setItem(STORAGE_KEY_SESSION, cred.key);
             return true;
           }
         } catch {}
@@ -1482,7 +1527,7 @@
       }
 
       function logout() {
-        sessionStorage.removeItem("cpa_key");
+        sessionStorage.removeItem(STORAGE_KEY_SESSION);
         clearCredentials();
         location.reload();
       }
@@ -1502,14 +1547,19 @@
       // API 通信
       // ============================================================
 
-      const API_PREFIX = "/api";
+      const API_PREFIX = ENDPOINT_API;
 
       function getConfig() {
         return {
-          target: parseInt(document.getElementById("cfgTarget").value) || 8,
-          timeout: parseInt(document.getElementById("cfgTimeout").value) || 30,
+          target:
+            parseInt(document.getElementById("cfgTarget").value) ||
+            DEFAULT_TARGET,
+          timeout:
+            parseInt(document.getElementById("cfgTimeout").value) ||
+            DEFAULT_TIMEOUT,
           patrolInterval:
-            parseInt(document.getElementById("patrolInterval").value) || 180,
+            parseInt(document.getElementById("patrolInterval").value) ||
+            DEFAULT_PATROL_INTERVAL,
         };
       }
 
@@ -1520,7 +1570,7 @@
           patrolLastRun: _patrolLastRun,
         };
         // fire-and-forget 写入后端
-        fetch("/local/config", {
+        fetch(ENDPOINT_LOCAL_CONFIG, {
           method: "PUT",
           headers: authHeaders(),
           body: JSON.stringify(cfg),
@@ -1540,7 +1590,9 @@
 
       async function loadConfig() {
         try {
-          const resp = await fetch("/local/config", { headers: authHeaders() });
+          const resp = await fetch(ENDPOINT_LOCAL_CONFIG, {
+            headers: authHeaders(),
+          });
           if (resp.ok) {
             const cfg = await resp.json();
             if (cfg.target)
@@ -1632,11 +1684,14 @@
 
       function shouldDisable(file, parsed) {
         if (!parsed) return false;
-        return parsed.code === 403 && parsed.reasons.includes("TOS_VIOLATION");
+        return (
+          parsed.code === TOS_VIOLATION_CODE &&
+          parsed.reasons.includes(TOS_VIOLATION_REASON)
+        );
       }
 
       function isCleanDisabled(file) {
-        if (!file.disabled && file.status !== "disabled") return false;
+        if (!file.disabled && file.status !== STATUS_DISABLED) return false;
         const parsed = parseStatusError(file.status_message);
         if (shouldDisable(file, parsed)) return false;
         return true;
@@ -1676,10 +1731,12 @@
       function sortCleanPool(pool, usageMap = new Map()) {
         const prioMap = getAccountPriority();
         // 过滤掉 block 账号
-        const filtered = pool.filter((f) => prioMap[f.account] !== "block");
+        const filtered = pool.filter(
+          (f) => prioMap[f.account] !== PRIORITY_BLOCK,
+        );
         return filtered.sort((a, b) => {
-          const aPrio = prioMap[a.account] === "prefer" ? 1 : 0;
-          const bPrio = prioMap[b.account] === "prefer" ? 1 : 0;
+          const aPrio = prioMap[a.account] === PRIORITY_PREFER ? 1 : 0;
+          const bPrio = prioMap[b.account] === PRIORITY_PREFER ? 1 : 0;
           if (bPrio !== aPrio) return bPrio - aPrio;
           const aUsage = usageMap.get(a.account) || { success: 0 };
           const bUsage = usageMap.get(b.account) || { success: 0 };
@@ -1704,7 +1761,7 @@
 
       async function loadPriorityFromServer() {
         try {
-          const data = await fetch("/local/priority", {
+          const data = await fetch(ENDPOINT_LOCAL_PRIORITY, {
             headers: authHeaders(),
           }).then((r) => r.json());
           _priorityCache = data || {};
@@ -1714,13 +1771,13 @@
       }
 
       function setAccountPriority(account, tag) {
-        if (!tag || tag === "normal") {
+        if (!tag || tag === PRIORITY_NORMAL) {
           delete _priorityCache[account];
         } else {
           _priorityCache[account] = tag;
         }
         // 异步保存到后端
-        fetch("/local/priority", {
+        fetch(ENDPOINT_LOCAL_PRIORITY, {
           method: "PUT",
           headers: authHeaders(),
           body: JSON.stringify(_priorityCache),
@@ -1728,13 +1785,13 @@
       }
 
       function cycleAccountPriority(account) {
-        const current = _priorityCache[account] || "normal";
+        const current = _priorityCache[account] || PRIORITY_NORMAL;
         const next =
-          current === "normal"
-            ? "prefer"
-            : current === "prefer"
-              ? "block"
-              : "normal";
+          current === PRIORITY_NORMAL
+            ? PRIORITY_PREFER
+            : current === PRIORITY_PREFER
+              ? PRIORITY_BLOCK
+              : PRIORITY_NORMAL;
         setAccountPriority(account, next);
         renderAccounts(allFiles);
         renderFilterTabs(allFiles);
@@ -1744,11 +1801,23 @@
       function getPriorityBadge(account) {
         const map = getAccountPriority();
         const tag = map[account];
-        if (tag === "prefer")
+        if (tag === PRIORITY_PREFER)
           return '<span style="color:#fbbf24;font-size:11px;margin-left:6px;" title="优先启用">⭐优先</span>';
-        if (tag === "block")
+        if (tag === PRIORITY_BLOCK)
           return '<span style="color:#ef4444;font-size:11px;margin-left:6px;" title="永不启用">🚫禁止</span>';
         return "";
+      }
+
+      // ============================================================
+      // 工具函数
+      // ============================================================
+
+      // 防 XSS：转义 HTML 特殊字符
+      function escapeHtml(str) {
+        if (!str) return "";
+        const el = document.createElement("div");
+        el.textContent = str;
+        return el.innerHTML;
       }
 
       // ============================================================
@@ -1756,7 +1825,7 @@
       // ============================================================
 
       let allFiles = [];
-      let currentFilter = "all";
+      let currentFilter = FILTER_ALL;
       let searchKeyword = "";
       let usageMap = new Map();
       let patrolTimer = null;
@@ -1868,6 +1937,22 @@
       // 日志
       // ============================================================
 
+      // 日志缓冲区，200ms 内合并为一次 POST
+      let _logBuffer = [];
+      let _logFlushTimer = null;
+
+      function _flushLogs() {
+        if (_logBuffer.length === 0) return;
+        const batch = _logBuffer;
+        _logBuffer = [];
+        _logFlushTimer = null;
+        fetch(ENDPOINT_LOCAL_LOGS, {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(batch),
+        }).catch(() => {});
+      }
+
       function log(msg, type = "info") {
         const body = document.getElementById("logBody");
         const line = document.createElement("div");
@@ -1877,23 +1962,22 @@
         line.textContent = text;
         body.appendChild(line);
         body.scrollTop = body.scrollHeight;
-        // 持久化到后端
-        fetch("/local/logs", {
-          method: "POST",
-          headers: authHeaders(),
-          body: JSON.stringify({ text, cls: line.className }),
-        }).catch(() => {});
+        // 批量持久化到后端
+        _logBuffer.push({ text, cls: line.className });
+        if (!_logFlushTimer) {
+          _logFlushTimer = setTimeout(_flushLogs, LOG_FLUSH_DELAY_MS);
+        }
       }
       function clearLog() {
         document.getElementById("logBody").innerHTML = "";
-        fetch("/local/logs", {
+        fetch(ENDPOINT_LOCAL_LOGS, {
           method: "DELETE",
           headers: authHeaders(),
         }).catch(() => {});
       }
       async function restoreLogs() {
         try {
-          const data = await fetch("/local/logs", {
+          const data = await fetch(ENDPOINT_LOCAL_LOGS, {
             headers: authHeaders(),
           }).then((r) => r.json());
           if (!Array.isArray(data) || data.length === 0) return;
@@ -1920,7 +2004,7 @@
           ? '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2" rx="1"/><rect x="1" y="7" width="14" height="2" rx="1"/><rect x="1" y="12" width="14" height="2" rx="1"/></svg>'
           : '<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>';
         btn.title = isGrid ? "切换为列表视图" : "切换为网格视图";
-        localStorage.setItem("cpa_layout", isGrid ? "grid" : "list");
+        localStorage.setItem(STORAGE_KEY_LAYOUT, isGrid ? "grid" : "list");
       }
 
       function toggleLogDrawer() {
@@ -1944,7 +2028,7 @@
       }
 
       function initLayout() {
-        const saved = localStorage.getItem("cpa_layout");
+        const saved = localStorage.getItem(STORAGE_KEY_LAYOUT);
         if (saved === "grid") {
           document.getElementById("accountList").classList.add("grid-mode");
           const btn = document.getElementById("btnLayout");
@@ -1995,9 +2079,9 @@
       }
 
       function batchSelectAll() {
-        const filtered = getFilteredFiles(allFiles, currentFilter);
+        let filtered = getFilteredFiles(allFiles, currentFilter);
         if (searchKeyword) {
-          filtered.filter((f) =>
+          filtered = filtered.filter((f) =>
             (f.account || f.email || f.name || "")
               .toLowerCase()
               .includes(searchKeyword),
@@ -2040,7 +2124,7 @@
           if (!f) continue;
           const name = f.name || f.account || f.email;
           try {
-            await apiCall("PATCH", "/auth-files/status", {
+            await apiRequest("PATCH", "/auth-files/status", {
               name,
               disabled,
             });
@@ -2074,7 +2158,7 @@
 
         showLoading(true);
         try {
-          await apiCall(
+          await apiRequest(
             "DELETE",
             `/auth-files?name=${encodeURIComponent(name)}`,
           );
@@ -2109,7 +2193,7 @@
           if (!f) continue;
           const name = f.name || f.account || f.email;
           try {
-            await apiCall(
+            await apiRequest(
               "DELETE",
               `/auth-files?name=${encodeURIComponent(name)}`,
             );
@@ -2133,16 +2217,24 @@
       // 数据处理与渲染
       // ============================================================
 
-      function renderStats(files) {
+      // 统一分类函数，消除重复过滤逻辑
+      function classifyFiles(files) {
         const enabled = files.filter(
-          (f) => !f.disabled && f.status !== "disabled",
+          (f) => !f.disabled && f.status !== STATUS_DISABLED,
         );
-        const healthy = enabled.filter((f) => f.status !== "error");
-        const errors = enabled.filter((f) => f.status === "error");
         const disabled = files.filter(
-          (f) => f.disabled || f.status === "disabled",
+          (f) => f.disabled || f.status === STATUS_DISABLED,
         );
-        const cleanPool = files.filter(isCleanDisabled);
+        const healthy = enabled.filter((f) => f.status !== STATUS_ERROR);
+        const errors = enabled.filter((f) => f.status === STATUS_ERROR);
+        const clean = files.filter(isCleanDisabled);
+        const validation = files.filter(hasValidationUrl);
+        return { enabled, disabled, healthy, errors, clean, validation };
+      }
+
+      function renderStats(files) {
+        const { enabled, healthy, errors, disabled, clean } =
+          classifyFiles(files);
         const target =
           parseInt(document.getElementById("cfgTarget").value) || 5;
 
@@ -2152,7 +2244,7 @@
     <div class="stat-card blue"><div class="stat-value">${healthy.length}</div><div class="stat-label">正常</div></div>
     <div class="stat-card red"><div class="stat-value">${errors.length}</div><div class="stat-label">错误</div></div>
     <div class="stat-card yellow"><div class="stat-value">${disabled.length}</div><div class="stat-label">禁用</div></div>
-    <div class="stat-card"><div class="stat-value">${cleanPool.length}</div><div class="stat-label">候补池</div></div>
+    <div class="stat-card"><div class="stat-value">${clean.length}</div><div class="stat-label">候补池</div></div>
     <div class="stat-card ${enabled.length === target ? "green" : "red"}">
       <div class="stat-value">${target}</div><div class="stat-label">目标</div>
     </div>
@@ -2160,48 +2252,27 @@
       }
 
       function getFilteredFiles(files, filter) {
-        switch (filter) {
-          case "enabled":
-            return files.filter((f) => !f.disabled && f.status !== "disabled");
-          case "healthy":
-            return files.filter(
-              (f) =>
-                !f.disabled && f.status !== "disabled" && f.status !== "error",
-            );
-          case "error":
-            return files.filter((f) => f.status === "error");
-          case "disabled":
-            return files.filter((f) => f.disabled || f.status === "disabled");
-          case "clean":
-            return files.filter(isCleanDisabled);
-          case "validation":
-            return files.filter(hasValidationUrl);
-          default:
-            return files;
-        }
+        if (filter === FILTER_ALL) return files;
+        const groups = classifyFiles(files);
+        return groups[filter] || files;
       }
 
       function renderFilterTabs(files) {
-        const enabled = files.filter(
-          (f) => !f.disabled && f.status !== "disabled",
-        );
-        const healthy = enabled.filter((f) => f.status !== "error");
-        const errors = files.filter((f) => f.status === "error");
-        const disabled = files.filter(
-          (f) => f.disabled || f.status === "disabled",
-        );
-        const clean = files.filter(isCleanDisabled);
-
-        const validation = files.filter(hasValidationUrl);
+        const { enabled, healthy, errors, disabled, clean, validation } =
+          classifyFiles(files);
 
         const tabs = [
-          { key: "all", label: "全部", count: files.length },
-          { key: "enabled", label: "🟢 启用", count: enabled.length },
-          { key: "healthy", label: "✅ 正常", count: healthy.length },
-          { key: "error", label: "❌ 错误", count: errors.length },
-          { key: "disabled", label: "⏸️ 禁用", count: disabled.length },
-          { key: "clean", label: "💤 候补", count: clean.length },
-          { key: "validation", label: "🔗 需验证", count: validation.length },
+          { key: FILTER_ALL, label: "全部", count: files.length },
+          { key: FILTER_ENABLED, label: "🟢 启用", count: enabled.length },
+          { key: FILTER_HEALTHY, label: "✅ 正常", count: healthy.length },
+          { key: FILTER_ERROR, label: "❌ 错误", count: errors.length },
+          { key: FILTER_DISABLED, label: "⏸️ 禁用", count: disabled.length },
+          { key: FILTER_CLEAN, label: "💤 候补", count: clean.length },
+          {
+            key: FILTER_VALIDATION,
+            label: "🔗 需验证",
+            count: validation.length,
+          },
         ];
 
         document.getElementById("filterTabs").innerHTML = tabs
@@ -2233,19 +2304,22 @@
 
         if (filtered.length === 0) {
           const msg = searchKeyword
-            ? `没有匹配「${searchKeyword}」的账号`
+            ? `没有匹配「${escapeHtml(searchKeyword)}」的账号`
             : "该分类下没有账号";
           list.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><p>${msg}</p></div>`;
           return;
         }
 
+        // 预构建索引映射，避免 O(n²) 的 indexOf
+        const indexMap = new Map(files.map((f, i) => [f, i]));
+
         list.innerHTML = filtered
           .map((f) => {
-            const i = files.indexOf(f);
+            const i = indexMap.get(f);
             const parsed = parseStatusError(f.status_message);
-            const isEnabled = !f.disabled && f.status !== "disabled";
-            const isError = f.status === "error";
-            const isDisabled = f.disabled || f.status === "disabled";
+            const isEnabled = !f.disabled && f.status !== STATUS_DISABLED;
+            const isError = f.status === STATUS_ERROR;
+            const isDisabled = f.disabled || f.status === STATUS_DISABLED;
             const clean = isCleanDisabled(f);
 
             const icon = shouldDisable(f, parsed)
@@ -2259,20 +2333,28 @@
                     : "✅";
 
             const badgeClass = isDisabled
-              ? "disabled"
+              ? STATUS_DISABLED
               : isError
-                ? "error"
-                : "active";
-            const badgeText = isDisabled ? "DISABLED" : f.status.toUpperCase();
+                ? STATUS_ERROR
+                : STATUS_ACTIVE;
+            const badgeText = isDisabled
+              ? "DISABLED"
+              : (f.status || "").toUpperCase();
+
+            const displayName = escapeHtml(
+              f.account || f.email || f.name || "",
+            );
+            const displayProvider = escapeHtml(f.provider || "-");
+            const displayType = escapeHtml(f.type || "-");
 
             let errorHtml = "";
             if (isError && parsed) {
               const reasons = parsed.reasons.length
-                ? ` (${parsed.reasons.join(", ")})`
+                ? ` (${escapeHtml(parsed.reasons.join(", "))})`
                 : "";
-              errorHtml = `<div class="account-error">${parsed.code}: ${parsed.message.trim().slice(0, 120)}${reasons}</div>`;
+              errorHtml = `<div class="account-error">${parsed.code}: ${escapeHtml(parsed.message.trim().slice(0, 120))}${reasons}</div>`;
               if (parsed.validationUrl) {
-                errorHtml += `<div style="margin-top:4px;"><a href="${parsed.validationUrl}" target="_blank" rel="noopener" style="color:var(--blue);font-size:12px;text-decoration:underline;">🔗 点击验证账号</a></div>`;
+                errorHtml += `<div style="margin-top:4px;"><a href="${escapeHtml(parsed.validationUrl)}" target="_blank" rel="noopener" style="color:var(--blue);font-size:12px;text-decoration:underline;">🔗 点击验证账号</a></div>`;
               }
             }
 
@@ -2297,10 +2379,10 @@
         ${checkboxHtml}
         <div class="account-icon">${icon}</div>
         <div class="account-info">
-          <div class="account-email">${f.account || f.email || f.name}${tagStr}${getPriorityBadge(f.account)}</div>
+          <div class="account-email">${displayName}${tagStr}${getPriorityBadge(f.account)}</div>
           <div class="account-meta">
-            <span>Provider: ${f.provider || "-"}</span>
-            <span>Type: ${f.type || "-"}</span>
+            <span>Provider: ${displayProvider}</span>
+            <span>Type: ${displayType}</span>
             ${f.last_refresh ? `<span>刷新: ${new Date(f.last_refresh).toLocaleString()}</span>` : ""}
           </div>
           ${errorHtml}
@@ -2314,7 +2396,7 @@
           }
           ${
             isDisabled
-              ? `<button class="btn btn-outline" onclick="event.stopPropagation();cycleAccountPriority('${f.account}')" title="切换优先级" style="padding:4px 8px;font-size:11px;">🏷️</button>`
+              ? `<button class="btn btn-outline" onclick="event.stopPropagation();cycleAccountPriority('${escapeHtml(f.account)}')" title="切换优先级" style="padding:4px 8px;font-size:11px;">🏷️</button>`
               : ""
           }
           <button class="btn btn-outline" onclick="event.stopPropagation();deleteAccount(${i})" title="删除凭证" style="padding:4px 8px;font-size:11px;color:var(--red);">🗑️</button>
@@ -2387,7 +2469,7 @@
           const data = await apiRequest("GET", "/auth-files");
           allFiles = data?.files ?? [];
           const enabled = allFiles.filter(
-            (f) => !f.disabled && f.status !== "disabled",
+            (f) => !f.disabled && f.status !== STATUS_DISABLED,
           );
 
           // 2. 禁用 TOS_VIOLATION
@@ -2421,7 +2503,7 @@
           const freshData = await apiRequest("GET", "/auth-files");
           allFiles = freshData?.files ?? [];
           const currentEnabled = allFiles.filter(
-            (f) => !f.disabled && f.status !== "disabled",
+            (f) => !f.disabled && f.status !== STATUS_DISABLED,
           );
           const cleanPool = sortCleanPool(
             allFiles.filter(isCleanDisabled),
@@ -2455,8 +2537,12 @@
           } else if (currentEnabled.length > target) {
             const excess = currentEnabled.length - target;
             // 优先禁用 error
-            const errors = currentEnabled.filter((f) => f.status === "error");
-            const healthy = currentEnabled.filter((f) => f.status !== "error");
+            const errors = currentEnabled.filter(
+              (f) => f.status === STATUS_ERROR,
+            );
+            const healthy = currentEnabled.filter(
+              (f) => f.status !== STATUS_ERROR,
+            );
             const toDeactivate = [...errors, ...healthy].slice(0, excess);
             log(
               `⏸️  禁用 ${toDeactivate.length} 个多余账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
