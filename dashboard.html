@@ -1631,6 +1631,13 @@
             try {
               errBody = await resp.json();
             } catch {}
+            // 鉴权失败，自动退出登录
+            if (resp.status === 401 && !window._loggingOut) {
+              window._loggingOut = true;
+              alert(errBody?.error || "登录已失效，请重新登录");
+              logout();
+              return;
+            }
             throw Object.assign(
               new Error(
                 errBody?.message || errBody?.error || `HTTP ${resp.status}`,
@@ -1886,7 +1893,7 @@
           _lastKnownRunAt > 0
         ) {
           restoreLogs();
-          refresh();
+          refreshData();
         }
         _lastKnownRunAt = status?.lastRunAt || 0;
 
@@ -2472,32 +2479,23 @@
       // 操作
       // ============================================================
 
-      async function refresh() {
-        showLoading(true);
-        log("正在连接...");
+      // 仅刷新账号数据和 UI（不验证连接）
+      async function refreshData() {
         try {
-          // 验证连接
-          await apiRequest("GET", "/config");
-          setConnection("ok", "已连接");
-          log("连接成功", "success");
-
-          // 获取认证文件
           const data = await apiRequest("GET", "/auth-files");
           const rawFiles = data?.files ?? (Array.isArray(data) ? data : []);
-          // 只管理 antigravity 类型的凭证
           allFiles = rawFiles.filter((f) => f.provider === "antigravity");
-          log(
-            `获取到 ${rawFiles.length} 个认证文件，显示 ${allFiles.length} 个 antigravity 凭证`,
-            "info",
-          );
-
           renderStats(allFiles);
           renderFilterTabs(allFiles);
           renderAccounts(allFiles);
         } catch (err) {
-          setConnection("err", "连接失败");
-          log(`连接失败: ${err.message}`, "error");
+          log(`刷新数据失败: ${err.message}`, "error");
         }
+      }
+
+      async function refresh() {
+        showLoading(true);
+        await refreshData();
         showLoading(false);
       }
 
