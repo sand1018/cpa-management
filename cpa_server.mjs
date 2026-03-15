@@ -28,10 +28,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = parseInt(process.env.PORT) || 3456;
-const PRIORITY_FILE = join(__dirname, "cpa_priority.json");
-const LOG_FILE = join(__dirname, "cpa_logs.json");
-const DASHBOARD_CONFIG_FILE = join(__dirname, "cpa_dashboard_config.json");
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const PRIORITY_FILE = join(DATA_DIR, "cpa_priority.json");
+const LOG_FILE = join(DATA_DIR, "cpa_logs.json");
+const DASHBOARD_CONFIG_FILE = join(DATA_DIR, "cpa_dashboard_config.json");
 const MAX_LOGS = 500;
+
+// 确保数据目录存在
+import { mkdirSync } from "node:fs";
+try {
+  mkdirSync(DATA_DIR, { recursive: true });
+} catch {}
 
 // 会话状态（登录时由前端提交，内存持有）
 let sessionBase = "";

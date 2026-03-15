@@ -1,0 +1,8 @@
+.git
+.gitignore
+README.md
+cpa_logs.json
+cpa_priority.json
+cpa_dashboard_config.json
+Dockerfile
+.dockerignore

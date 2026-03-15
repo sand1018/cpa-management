@@ -34,6 +34,8 @@ cpa_server.mjs (Node.js 后端)
 
 ## 快速开始
 
+### 直接运行
+
 ```bash
 # 启动（默认端口 3456）
 node cpa_server.mjs
@@ -43,6 +45,41 @@ PORT=8080 node cpa_server.mjs
 
 # 使用 PM2 部署
 pm2 start cpa_server.mjs --name cpa-management
+```
+
+### Docker 部署
+
+```bash
+# 构建镜像
+docker build -t cpa-management .
+
+# 运行（数据持久化到 ./data 目录）
+docker run -d \
+  --name cpa-management \
+  -p 3456:3456 \
+  -v $(pwd)/data:/app/data \
+  cpa-management
+
+# 自定义端口
+docker run -d -p 8080:3456 -v $(pwd)/data:/app/data cpa-management
+```
+
+### Docker Compose
+
+```yaml
+# docker-compose.yml
+services:
+  cpa-management:
+    build: .
+    ports:
+      - "3456:3456"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
 ```
 
 启动后在浏览器打开 `http://localhost:3456`，输入上游 API 地址和管理密钥即可登录。

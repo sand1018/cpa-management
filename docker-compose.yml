@@ -1,0 +1,9 @@
+services:
+  cpa-management:
+    build: .
+    container_name: cpa-management
+    ports:
+      - "3456:3456"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
