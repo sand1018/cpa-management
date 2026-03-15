@@ -42,6 +42,7 @@
         color: var(--text);
         min-height: 100vh;
         line-height: 1.6;
+        overflow-x: hidden;
       }
 
       /* 头部 */
@@ -350,6 +351,55 @@
         font-size: 18px;
         font-weight: 600;
       }
+      .toolbar-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .input-group {
+        display: inline-flex;
+        align-items: center;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding-right: 10px;
+        transition: border-color 0.2s;
+      }
+      .input-group:focus-within {
+        border-color: var(--accent);
+      }
+      .input-group input {
+        background: transparent !important;
+        border: none !important;
+        padding: 7px 10px !important;
+        width: 60px !important;
+        text-align: center;
+        color: var(--text);
+        outline: none;
+      }
+      .input-group .suffix {
+        font-size: 11px;
+        color: var(--text-dim);
+        user-select: none;
+      }
+      .search-box {
+        padding: 8px 14px;
+        background: var(--surface2);
+        border: 2px solid var(--border);
+        border-radius: 10px;
+        color: var(--text);
+        font-size: 14px;
+        outline: none;
+        width: 180px;
+        transition: all 0.2s;
+      }
+      .search-box:focus {
+        border-color: var(--accent);
+        background: var(--surface);
+        width: 240px;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+      }
 
       /* 分类筛选 */
       .filter-tabs {
@@ -399,7 +449,14 @@
       .account-list {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 16px;
+        transition: all 0.3s ease;
+      }
+      /* 网格模式 */
+      .account-list.grid-mode {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 24px;
       }
       .account-card {
         background: var(--surface);
@@ -477,6 +534,38 @@
         flex-shrink: 0;
       }
 
+      /* 网格模式下的卡片微调 */
+      .grid-mode .account-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 24px 20px;
+        position: relative;
+      }
+      .grid-mode .account-icon {
+        font-size: 32px;
+        margin-bottom: 8px;
+      }
+      .grid-mode .account-info {
+        width: 100%;
+      }
+      .grid-mode .account-meta {
+        justify-content: center;
+        gap: 8px;
+      }
+      .grid-mode .status-badge {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+      }
+      .grid-mode .account-actions {
+        width: 100%;
+        justify-content: center;
+        border-top: 1px solid var(--border);
+        padding-top: 16px;
+        margin-top: 8px;
+      }
+
       /* 日志 */
       .log-panel {
         background: var(--surface);
@@ -486,6 +575,7 @@
         height: calc(100vh - 200px);
         display: flex;
         flex-direction: column;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
       .log-header {
         padding: 12px 18px;
@@ -494,23 +584,40 @@
         justify-content: space-between;
         align-items: center;
       }
+      .log-header .close-drawer {
+        display: none;
+        background: none;
+        border: none;
+        color: var(--text-dim);
+        font-size: 20px;
+        cursor: pointer;
+      }
       .log-header h3 {
         font-size: 14px;
         font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .log-header .left-side {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
       .log-body {
         padding: 14px 18px;
         flex: 1;
         overflow-y: auto;
         font-family: "Consolas", "Courier New", monospace;
-        font-size: 13px;
-        line-height: 1.8;
+        font-size: 12px;
+        line-height: 1.6;
         color: var(--text-dim);
         background: #00000022;
       }
       .log-body .log-line {
         white-space: pre-wrap;
         word-break: break-all;
+        margin-bottom: 4px;
       }
       .log-body .log-line.info {
         color: var(--text);
@@ -523,6 +630,46 @@
       }
       .log-body .log-line.warn {
         color: var(--yellow);
+      }
+
+      /* 悬浮按钮 */
+      .fab {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        width: 50px;
+        height: 50px;
+        border-radius: 25px;
+        background: var(--accent);
+        color: white;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        border: none;
+        cursor: pointer;
+        z-index: 1000;
+        transition: transform 0.2s;
+      }
+      .fab:active {
+        transform: scale(0.9);
+      }
+
+      /* 抽屉背景遮罩 */
+      .drawer-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+        z-index: 1001;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s;
+      }
+      .drawer-overlay.show {
+        display: block;
+        opacity: 1;
       }
 
       /* 加载遮罩 */
@@ -568,35 +715,218 @@
         margin-bottom: 12px;
       }
 
+      /* 登录框 */
+      .login-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 40px;
+        text-align: center;
+        max-width: 400px;
+        width: 100%;
+        box-shadow: var(--shadow);
+      }
+      .login-card .icon-box {
+        font-size: 48px;
+        margin-bottom: 16px;
+      }
+      .login-card h2 {
+        margin: 0 0 8px;
+        font-size: 20px;
+        color: var(--text);
+      }
+      .login-card p {
+        font-size: 13px;
+        color: var(--text-dim);
+        margin: 0 0 20px;
+      }
+      .login-card input[type="text"],
+      .login-card input[type="password"] {
+        width: 100%;
+        padding: 12px 14px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        color: var(--text);
+        font-size: 14px;
+        outline: none;
+        box-sizing: border-box;
+      }
+
       /* 响应式 */
       @media (max-width: 1024px) {
         .main-layout {
           grid-template-columns: 1fr;
         }
         .log-panel {
-          height: 300px;
-          margin-top: 20px;
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          height: 60vh;
+          z-index: 1002;
+          border-radius: 20px 20px 0 0;
+          transform: translateY(100%);
+          margin: 0;
+        }
+        .log-panel.drawer-open {
+          transform: translateY(0);
+        }
+        .log-header .close-drawer {
+          display: block;
         }
         .sidebar-area {
           position: static;
+          display: none; /* 平时隐藏，仅作为抽屉弹出 */
+        }
+        .sidebar-area.drawer-active {
+          display: block;
+        }
+        .fab {
+          display: flex;
         }
       }
 
       @media (max-width: 768px) {
         .header {
-          padding: 16px;
+          padding: 16px 20px;
+          justify-content: center;
+          text-align: center;
+        }
+        .header h1 {
+          font-size: 18px;
         }
         .container {
           padding: 16px;
         }
         .config-bar {
-          flex-direction: column;
+          background: var(--surface2);
+          padding: 16px;
         }
         .config-bar .field {
-          min-width: auto;
+          flex: 1 1 100%;
+          min-width: 0;
+        }
+        .toolbar-actions {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          width: 100%;
+          margin-top: 12px;
+        }
+        .toolbar-actions #searchInput {
+          grid-column: 1 / -1;
+          width: 100% !important;
+          max-width: none !important;
+        }
+        .config-bar .field.small {
+          flex: 1 1 calc(50% - 6px);
+        }
+        .config-bar button {
+          width: 100%;
+          justify-content: center;
+        }
+        .stats {
+          grid-template-columns: 1fr 1fr;
         }
         .account-card {
-          flex-wrap: wrap;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 12px;
+          padding: 16px;
+        }
+        .account-info {
+          width: 100%;
+        }
+        .account-actions {
+          width: 100%;
+          justify-content: flex-end;
+          border-top: 1px solid var(--border);
+          padding-top: 12px;
+          margin-top: 4px;
+        }
+        .status-badge {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+        }
+        .account-card {
+          position: relative;
+          margin-bottom: 16px !important;
+        }
+        .login-card {
+          padding: 30px 20px;
+          border-radius: 0;
+          border: none;
+          max-width: none;
+        }
+      }
+
+      @media (max-width: 480px) {
+        .config-bar .field.small {
+          flex: 1 1 45%;
+          min-width: 0;
+        }
+        .stats {
+          grid-template-columns: 1fr 1fr; /* 强制 2 列 */
+          gap: 12px;
+        }
+        .account-list {
+          gap: 20px !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+        .account-list.grid-mode {
+          display: grid !important;
+          gap: 20px !important;
+        }
+        .stat-card {
+          padding: 12px 8px;
+        }
+        .stat-card .stat-value {
+          font-size: 20px;
+        }
+        .header {
+          flex-direction: column;
+          padding: 16px 12px;
+        }
+        .header h1 {
+          font-size: 16px;
+        }
+        .toolbar {
+          flex-direction: column;
+          align-items: stretch;
+          width: 100%;
+        }
+        .toolbar-actions {
+          gap: 8px;
+        }
+        .toolbar-actions .btn {
+          padding: 8px 4px;
+          font-size: 12px;
+          justify-content: center;
+        }
+        .toolbar-actions #patrolIntervalGroup {
+          width: 100%;
+        }
+        .toolbar-actions #patrolIntervalGroup input {
+          flex: 1;
+          width: 100% !important;
+        }
+        .filter-tabs {
+          width: calc(100% + 32px);
+          margin-left: -16px;
+          margin-right: -16px;
+          overflow-x: auto;
+          white-space: nowrap;
+          padding: 0 16px 12px;
+          -webkit-overflow-scrolling: touch;
+        }
+        .filter-tab {
+          flex-shrink: 0;
+        }
+        .account-actions {
+          justify-content: center;
         }
       }
     </style>
@@ -653,57 +983,22 @@
         justify-content: center;
       "
     >
-      <div
-        style="
-          background: var(--surface);
-          border: 1px solid var(--border);
-          border-radius: 16px;
-          padding: 40px;
-          text-align: center;
-          max-width: 360px;
-          width: 90%;
-        "
-      >
-        <div style="font-size: 48px; margin-bottom: 16px">🔐</div>
-        <h2 style="margin: 0 0 8px; font-size: 20px; color: var(--text)">
-          访问验证
-        </h2>
-        <p style="font-size: 13px; color: var(--text-dim); margin: 0 0 20px">
-          请输入 API 地址和管理密钥
-        </p>
+      <div class="login-card">
+        <div class="icon-box">🔐</div>
+        <h2>访问验证</h2>
+        <p>请输入 API 地址和管理密钥</p>
         <input
           type="text"
           id="loginBase"
           placeholder="API 地址 (https://...)"
-          style="
-            width: 100%;
-            padding: 10px 14px;
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text);
-            font-size: 14px;
-            outline: none;
-            box-sizing: border-box;
-            margin-bottom: 10px;
-          "
+          style="margin-bottom: 10px"
         />
         <div style="position: relative">
           <input
             type="password"
             id="loginKey"
             placeholder="Management Key"
-            style="
-              width: 100%;
-              padding: 10px 40px 10px 14px;
-              background: var(--surface2);
-              border: 1px solid var(--border);
-              border-radius: 8px;
-              color: var(--text);
-              font-size: 14px;
-              outline: none;
-              box-sizing: border-box;
-            "
+            style="padding-right: 40px"
             onkeydown="if (event.key === 'Enter') doLogin();"
           />
           <button
@@ -822,34 +1117,23 @@
           <!-- 操作栏 -->
           <div class="toolbar">
             <h2>📂 认证文件列表</h2>
-            <div style="display: flex; gap: 8px; align-items: center">
+            <div class="toolbar-actions">
               <input
                 type="text"
                 id="searchInput"
-                placeholder="🔍 搜索账号..."
+                class="search-box"
+                placeholder="🔍 搜索账号或邮箱..."
                 oninput="onSearch()"
-                style="
-                  padding: 7px 12px;
-                  background: var(--surface2);
-                  border: 1px solid var(--border);
-                  border-radius: 8px;
-                  color: var(--text);
-                  font-size: 13px;
-                  outline: none;
-                  width: 180px;
-                  transition:
-                    border-color 0.2s,
-                    width 0.2s;
-                "
-                onfocus="
-                  this.style.borderColor = 'var(--accent)';
-                  this.style.width = '220px';
-                "
-                onblur="
-                  this.style.borderColor = 'var(--border)';
-                  this.style.width = '180px';
-                "
               />
+              <button
+                class="btn btn-outline"
+                id="btnLayout"
+                onclick="toggleLayout()"
+                title="切换网格/列表布局"
+                style="padding: 7px 10px"
+              >
+                🔲
+              </button>
               <button
                 class="btn btn-primary"
                 onclick="
@@ -874,27 +1158,18 @@
               >
                 🔄 定时巡检
               </button>
-              <input
-                type="number"
-                id="patrolInterval"
-                value="180"
-                min="10"
-                max="3600"
-                style="
-                  width: 55px;
-                  padding: 6px 8px;
-                  background: var(--surface2);
-                  border: 1px solid var(--border);
-                  border-radius: 6px;
-                  color: var(--text);
-                  font-size: 12px;
-                  text-align: center;
-                  outline: none;
-                "
-                onfocus="this.dataset.prev = this.value"
-                onchange="confirmSaveConfig(this)"
-              />
-              <span style="font-size: 11px; color: var(--text-dim)">秒</span>
+              <div class="input-group" id="patrolIntervalGroup">
+                <input
+                  type="number"
+                  id="patrolInterval"
+                  value="180"
+                  min="10"
+                  max="3600"
+                  onfocus="this.dataset.prev = this.value"
+                  onchange="confirmSaveConfig(this)"
+                />
+                <span class="suffix">秒</span>
+              </div>
               <span
                 id="patrolStatus"
                 style="font-size: 12px; color: var(--text-dim); min-width: 60px"
@@ -921,7 +1196,12 @@
           <!-- 操作日志 -->
           <div class="log-panel">
             <div class="log-header">
-              <h3>📜 操作日志</h3>
+              <div class="left-side">
+                <button class="close-drawer" onclick="toggleLogDrawer()">
+                  ✕
+                </button>
+                <h3>📜 操作日志</h3>
+              </div>
               <button
                 class="btn btn-outline"
                 onclick="if (confirm('确认清除所有日志？')) clearLog();"
@@ -1545,12 +1825,56 @@
             line.textContent = item.text;
             body.appendChild(line);
           }
-          body.scrollTop = body.scrollHeight;
         } catch {}
       }
 
       // ============================================================
-      // 渲染
+      // 布局切换与抽屉
+      // ============================================================
+      function toggleLayout() {
+        const list = document.getElementById("accountList");
+        const btn = document.getElementById("btnLayout");
+        const isGrid = list.classList.toggle("grid-mode");
+
+        btn.textContent = isGrid ? "☰" : "🔲";
+        btn.title = isGrid ? "切换为列表视图" : "切换为网格视图";
+        localStorage.setItem("cpa_layout", isGrid ? "grid" : "list");
+      }
+
+      function toggleLogDrawer() {
+        const sidebar = document.querySelector(".sidebar-area");
+        const panel = document.querySelector(".log-panel");
+        const overlay = document.getElementById("drawerOverlay");
+
+        const isOpen = panel.classList.toggle("drawer-open");
+        overlay.classList.toggle("show", isOpen);
+        if (isOpen) {
+          sidebar.classList.add("drawer-active");
+          document.body.style.overflow = "hidden"; // 禁止滚动
+        } else {
+          setTimeout(() => {
+            if (!panel.classList.contains("drawer-open")) {
+              sidebar.classList.remove("drawer-active");
+            }
+          }, 300);
+          document.body.style.overflow = "";
+        }
+      }
+
+      function initLayout() {
+        const saved = localStorage.getItem("cpa_layout");
+        if (saved === "grid") {
+          document.getElementById("accountList").classList.add("grid-mode");
+          const btn = document.getElementById("btnLayout");
+          if (btn) {
+            btn.textContent = "☰";
+            btn.title = "切换为列表视图";
+          }
+        }
+      }
+
+      // ============================================================
+      // 数据处理与渲染
       // ============================================================
 
       function renderStats(files) {
@@ -1898,6 +2222,7 @@
 
       // 初始化应用（登录后调用）
       async function initApp() {
+        initLayout();
         const cfg = await loadConfig();
         await Promise.all([restoreLogs(), loadPriorityFromServer()]);
         // 从后端配置恢复巡检状态
@@ -1949,5 +2274,18 @@
         }
       });
     </script>
+    <button
+      class="fab"
+      id="fabLog"
+      onclick="toggleLogDrawer()"
+      title="查看日志"
+    >
+      📜
+    </button>
+    <div
+      class="drawer-overlay"
+      id="drawerOverlay"
+      onclick="toggleLogDrawer()"
+    ></div>
   </body>
 </html>
