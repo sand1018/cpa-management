@@ -1314,35 +1314,35 @@
       const ENDPOINT_PATROL_RUN = "/local/patrol/run";
 
       // -- 默认配置值 --
-      const DEFAULT_TARGET = 5;
-      const DEFAULT_TIMEOUT = 30;
-      const DEFAULT_PATROL_INTERVAL = 180;
-      const MIN_PATROL_INTERVAL = 30;
-      const LOG_FLUSH_DELAY_MS = 200;
+      const DEFAULT_TARGET = 5; // 目标启用账号数
+      const DEFAULT_TIMEOUT = 30; // API 请求超时（秒）
+      const DEFAULT_PATROL_INTERVAL = 180; // 巡检间隔（秒）
+      const MIN_PATROL_INTERVAL = 30; // 巡检最小间隔（秒）
+      const LOG_POLL_INTERVAL_MS = 5000; // 日志轮询间隔（毫秒）
 
       // -- 错误判定 --
-      const TOS_VIOLATION_CODE = 403;
-      const TOS_VIOLATION_REASON = "TOS_VIOLATION";
+      const TOS_VIOLATION_CODE = 403; // TOS 违规 HTTP 状态码
+      const TOS_VIOLATION_REASON = "TOS_VIOLATION"; // TOS 违规原因标识
 
       // -- 优先级标签 --
-      const PRIORITY_NORMAL = "normal";
-      const PRIORITY_PREFER = "prefer";
-      const PRIORITY_BLOCK = "block";
+      const PRIORITY_NORMAL = "normal"; // 普通（默认）
+      const PRIORITY_PREFER = "prefer"; // 优先启用
+      const PRIORITY_BLOCK = "block"; // 永不启用
 
       // -- 账号状态值（后端 API 返回的 f.status）--
-      const STATUS_DISABLED = "disabled";
-      const STATUS_ERROR = "error";
-      const STATUS_ACTIVE = "active";
+      const STATUS_DISABLED = "disabled"; // 已禁用
+      const STATUS_ERROR = "error"; // 错误
+      const STATUS_ACTIVE = "active"; // 正常
 
       // -- 筛选器键名 --
-      const FILTER_ALL = "all";
-      const FILTER_ENABLED = "enabled";
-      const FILTER_HEALTHY = "healthy";
-      const FILTER_ERROR = "error";
-      const FILTER_DISABLED = "disabled";
-      const FILTER_CLEAN = "clean";
-      const FILTER_VALIDATION = "validation";
-      const FILTER_TOS = "tosViolation";
+      const FILTER_ALL = "all"; // 全部
+      const FILTER_ENABLED = "enabled"; // 启用中
+      const FILTER_HEALTHY = "healthy"; // 正常运行
+      const FILTER_ERROR = "error"; // 错误状态
+      const FILTER_DISABLED = "disabled"; // 已禁用
+      const FILTER_CLEAN = "clean"; // 候补池（干净的禁用账号）
+      const FILTER_VALIDATION = "validation"; // 需要验证
+      const FILTER_TOS = "tosViolation"; // TOS 违规
 
       // ============================================================
       // 密钥显示/隐藏切换
@@ -1833,7 +1833,7 @@
 
       function startLogPoll() {
         stopLogPoll();
-        _logPollTimer = setInterval(restoreLogs, 5000);
+        _logPollTimer = setInterval(restoreLogs, LOG_POLL_INTERVAL_MS);
       }
 
       function stopLogPoll() {
