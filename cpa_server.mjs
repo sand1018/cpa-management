@@ -288,7 +288,8 @@ let _serverLogBuffer = [];
 let _serverLogFlushTimer = null;
 
 function addLog(text, type = "info") {
-  const ts = new Date().toLocaleTimeString();
+  const ts = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+
   _serverLogBuffer.push({ text: `[${ts}] ${text}`, cls: `log-line ${type}` });
   if (!_serverLogFlushTimer) {
     _serverLogFlushTimer = setTimeout(flushServerLogs, 200);
