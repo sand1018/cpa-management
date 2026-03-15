@@ -188,6 +188,353 @@ function saveDashboardConfig(data) {
 }
 
 // ============================================================
+// 自动管理逻辑（从前端迁移到后端）
+// ============================================================
+
+const TOS_VIOLATION_CODE = 403;
+const TOS_VIOLATION_REASON = "TOS_VIOLATION";
+
+function parseStatusError(msg) {
+  if (!msg) return null;
+  try {
+    const obj = JSON.parse(msg);
+    const err = obj?.error;
+    if (!err) return null;
+    const reasons = [];
+    let validationUrl = "";
+    if (Array.isArray(err.details)) {
+      for (const d of err.details) {
+        if (d.reason) reasons.push(d.reason);
+        if (d.metadata?.validation_url)
+          validationUrl = d.metadata.validation_url;
+      }
+    }
+    return {
+      code: err.code || 0,
+      message: err.message || "",
+      status: err.status || "",
+      reasons,
+      validationUrl,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function shouldDisableAccount(file, parsed) {
+  if (!parsed) return false;
+  return (
+    parsed.code === TOS_VIOLATION_CODE &&
+    parsed.reasons.includes(TOS_VIOLATION_REASON)
+  );
+}
+
+function isCleanDisabled(file) {
+  if (!file.disabled && file.status !== "disabled") return false;
+  const parsed = parseStatusError(file.status_message);
+  if (shouldDisableAccount(file, parsed)) return false;
+  return true;
+}
+
+function aggregateUsageByAccount(usageData) {
+  const map = new Map();
+  const apis = usageData?.usage?.apis;
+  if (!apis) return map;
+  for (const apiData of Object.values(apis)) {
+    const models = apiData.models;
+    if (!models) continue;
+    for (const modelData of Object.values(models)) {
+      if (!Array.isArray(modelData.details)) continue;
+      for (const record of modelData.details) {
+        const email = record.source;
+        if (!email) continue;
+        let entry = map.get(email);
+        if (!entry) {
+          entry = { success: 0, failed: 0, tokens: 0 };
+          map.set(email, entry);
+        }
+        if (record.failed) entry.failed++;
+        else entry.success++;
+        entry.tokens += record.tokens?.total_tokens || 0;
+      }
+    }
+  }
+  return map;
+}
+
+function sortCleanPool(pool, usageMap = new Map()) {
+  const prioMap = loadPriority();
+  const filtered = pool.filter((f) => prioMap[f.account] !== "block");
+  return filtered.sort((a, b) => {
+    const aPrio = prioMap[a.account] === "prefer" ? 1 : 0;
+    const bPrio = prioMap[b.account] === "prefer" ? 1 : 0;
+    if (bPrio !== aPrio) return bPrio - aPrio;
+    const aUsage = usageMap.get(a.account) || { success: 0 };
+    const bUsage = usageMap.get(b.account) || { success: 0 };
+    if (bUsage.success !== aUsage.success)
+      return bUsage.success - aUsage.success;
+    const aTime = a.last_refresh ? new Date(a.last_refresh).getTime() : 0;
+    const bTime = b.last_refresh ? new Date(b.last_refresh).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
+// ============================================================
+// 后端日志写入
+// ============================================================
+
+// 日志缓冲区，避免逐条读写文件
+let _serverLogBuffer = [];
+let _serverLogFlushTimer = null;
+
+function addLog(text, type = "info") {
+  const ts = new Date().toLocaleTimeString();
+  _serverLogBuffer.push({ text: `[${ts}] ${text}`, cls: `log-line ${type}` });
+  if (!_serverLogFlushTimer) {
+    _serverLogFlushTimer = setTimeout(flushServerLogs, 200);
+  }
+}
+
+function flushServerLogs() {
+  _serverLogFlushTimer = null;
+  if (_serverLogBuffer.length === 0) return;
+  const batch = _serverLogBuffer;
+  _serverLogBuffer = [];
+  const logs = loadLogs();
+  logs.push(...batch);
+  saveLogs(logs);
+}
+
+// ============================================================
+// 巡检定时器（后端驻留，setTimeout 链式调用，无漂移）
+// ============================================================
+
+const _patrol = {
+  active: false,
+  interval: 180,
+  lastRunAt: 0,
+  nextRunAt: 0,
+  timerId: null,
+  running: false, // 防止重入
+};
+
+function scheduleNextPatrol(delaySec) {
+  if (_patrol.timerId) {
+    clearTimeout(_patrol.timerId);
+    _patrol.timerId = null;
+  }
+  _patrol.nextRunAt = Date.now() + delaySec * 1000;
+  _patrol.timerId = setTimeout(async () => {
+    if (!_patrol.active) return;
+    _patrol.lastRunAt = Date.now();
+    addLog("--- 定时巡检触发 ---", "info");
+    try {
+      await executeAutoManage();
+    } catch (err) {
+      addLog(`巡检执行失败: ${err.message}`, "error");
+    }
+    if (_patrol.active) {
+      scheduleNextPatrol(_patrol.interval);
+    }
+    persistPatrolState();
+  }, delaySec * 1000);
+}
+
+function persistPatrolState() {
+  saveDashboardConfig({
+    patrolActive: _patrol.active,
+    patrolInterval: _patrol.interval,
+    patrolLastRun: _patrol.lastRunAt,
+  });
+}
+
+function serverStartPatrol(interval) {
+  if (!sessionBase || !sessionKey) {
+    return { error: "未登录，无法启动巡检" };
+  }
+  if (_patrol.timerId) {
+    clearTimeout(_patrol.timerId);
+    _patrol.timerId = null;
+  }
+  _patrol.active = true;
+  _patrol.interval = interval;
+  scheduleNextPatrol(interval);
+  persistPatrolState();
+  addLog(`🔄 定时巡检已开启，间隔 ${interval}s`, "info");
+  console.log(`🔄 巡检已开启，间隔 ${interval}s`);
+  return { ok: true };
+}
+
+function serverStopPatrol() {
+  if (_patrol.timerId) {
+    clearTimeout(_patrol.timerId);
+    _patrol.timerId = null;
+  }
+  _patrol.active = false;
+  _patrol.nextRunAt = 0;
+  persistPatrolState();
+  addLog("⏹️ 定时巡检已停止", "info");
+  console.log("⏹️ 巡检已停止");
+  return { ok: true };
+}
+
+function getPatrolStatus() {
+  const remaining =
+    _patrol.active && _patrol.nextRunAt > 0
+      ? Math.max(0, Math.floor((_patrol.nextRunAt - Date.now()) / 1000))
+      : 0;
+  return {
+    active: _patrol.active,
+    running: _patrol.running,
+    interval: _patrol.interval,
+    lastRunAt: _patrol.lastRunAt,
+    nextRunAt: _patrol.nextRunAt,
+    remaining,
+  };
+}
+
+// 登录成功后尝试恢复巡检
+function tryRestorePatrol() {
+  const cfg = loadDashboardConfig();
+  if (!cfg.patrolActive) return;
+  const interval = cfg.patrolInterval || 180;
+  const lastRun = cfg.patrolLastRun || 0;
+  const elapsed = Math.floor((Date.now() - lastRun) / 1000);
+  const remaining = Math.max(interval - elapsed, 0);
+
+  _patrol.active = true;
+  _patrol.interval = interval;
+  _patrol.lastRunAt = lastRun;
+
+  if (remaining <= 0) {
+    addLog(`🔄 恢复巡检，已超时 ${elapsed - interval}s，立即执行`, "info");
+    scheduleNextPatrol(1); // 1 秒后执行，避免阻塞登录响应
+  } else {
+    addLog(`🔄 恢复巡检，${remaining}s 后执行下次`, "info");
+    scheduleNextPatrol(remaining);
+  }
+  console.log(
+    `🔄 巡检已恢复，${remaining > 0 ? remaining + "s 后执行" : "即将执行"}`,
+  );
+}
+
+// 自动管理核心执行（含重入保护）
+async function executeAutoManage() {
+  if (_patrol.running) {
+    addLog("⚠️ 自动管理正在执行中，跳过本次调用", "warn");
+    return;
+  }
+  _patrol.running = true;
+
+  const cfg = loadDashboardConfig();
+  const target = cfg.target || 5;
+
+  addLog("===== 开始自动管理 =====", "info");
+  try {
+    // 1. 获取最新数据
+    const result1 = await proxyUpstream("GET", "/auth-files");
+    if (result1.status !== 200)
+      throw new Error(`获取凭证失败: HTTP ${result1.status}`);
+    let allFiles = result1.data?.files ?? [];
+    const enabled = allFiles.filter(
+      (f) => !f.disabled && f.status !== "disabled",
+    );
+
+    // 2. 禁用 TOS_VIOLATION
+    for (const f of enabled) {
+      const parsed = parseStatusError(f.status_message);
+      if (shouldDisableAccount(f, parsed)) {
+        try {
+          await proxyUpstream("PATCH", "/auth-files/status", {
+            name: f.name,
+            disabled: true,
+          });
+          addLog(`🚫 已禁用(TOS): ${f.account}`, "warn");
+        } catch (err) {
+          addLog(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+        }
+      }
+    }
+
+    // 2.5 获取使用统计
+    let usageMap = new Map();
+    try {
+      const usageResult = await proxyUpstream("GET", "/usage");
+      if (usageResult.status === 200) {
+        usageMap = aggregateUsageByAccount(usageResult.data);
+        addLog(`📊 已加载使用统计 (${usageMap.size} 个账号有记录)`, "info");
+      }
+    } catch {
+      addLog("⚠️ 获取使用统计失败，将仅按 last_refresh 排序", "warn");
+    }
+
+    // 3. 重新获取最新数据
+    const result2 = await proxyUpstream("GET", "/auth-files");
+    allFiles = result2.data?.files ?? [];
+    const currentEnabled = allFiles.filter(
+      (f) => !f.disabled && f.status !== "disabled",
+    );
+    const cleanPool = sortCleanPool(allFiles.filter(isCleanDisabled), usageMap);
+
+    // 4. 维持目标数
+    if (currentEnabled.length < target && cleanPool.length > 0) {
+      const needed = Math.min(target - currentEnabled.length, cleanPool.length);
+      addLog(
+        `🔄 启用 ${needed} 个候补账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
+        "info",
+      );
+      for (let i = 0; i < needed; i++) {
+        try {
+          await proxyUpstream("PATCH", "/auth-files/status", {
+            name: cleanPool[i].name,
+            disabled: false,
+          });
+          addLog(`✅ 已启用: ${cleanPool[i].account}`, "success");
+        } catch (err) {
+          addLog(
+            `❌ 启用失败: ${cleanPool[i].account} - ${err.message}`,
+            "error",
+          );
+        }
+      }
+    } else if (currentEnabled.length > target) {
+      const excess = currentEnabled.length - target;
+      const errors = currentEnabled.filter((f) => f.status === "error");
+      const healthy = currentEnabled.filter((f) => f.status !== "error");
+      const toDeactivate = [...errors, ...healthy].slice(0, excess);
+      addLog(
+        `⏸️ 禁用 ${toDeactivate.length} 个多余账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
+        "info",
+      );
+      for (const f of toDeactivate) {
+        try {
+          await proxyUpstream("PATCH", "/auth-files/status", {
+            name: f.name,
+            disabled: true,
+          });
+          addLog(`⏸️ 已禁用: ${f.account}`, "warn");
+        } catch (err) {
+          addLog(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+        }
+      }
+    } else {
+      addLog(
+        `✅ 当前启用 ${currentEnabled.length} 个，符合目标 ${target} 个`,
+        "success",
+      );
+    }
+
+    addLog("===== 自动管理完成 =====", "success");
+  } catch (err) {
+    addLog(`自动管理失败: ${err.message}`, "error");
+  } finally {
+    _patrol.running = false;
+    // 确保日志缓冲立即落盘
+    flushServerLogs();
+  }
+}
+
+// ============================================================
 // 上游 API 代理
 // ============================================================
 
@@ -263,6 +610,7 @@ async function handleRequest(req, res) {
           sessionBase = base;
           sessionKey = key;
           updateDataPaths(base);
+          tryRestorePatrol();
           console.log(`✅ 登录成功，上游: ${base}`);
           return jsonResponse(res, { ok: true });
         }
@@ -327,6 +675,36 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       saveDashboardConfig(body || {});
       return jsonResponse(res, { ok: true });
+    }
+    return errorResponse(res, "Method not allowed", 405);
+  }
+
+  // ---- 本地 API：巡检控制 ----
+  if (path.startsWith("/local/patrol")) {
+    if (path === "/local/patrol/status" && method === "GET") {
+      return jsonResponse(res, getPatrolStatus());
+    }
+    if (path === "/local/patrol/start" && method === "POST") {
+      const body = await readBody(req);
+      const interval =
+        body?.interval || loadDashboardConfig().patrolInterval || 180;
+      const result = serverStartPatrol(interval);
+      if (result.error) return errorResponse(res, result.error, 400);
+      return jsonResponse(res, result);
+    }
+    if (path === "/local/patrol/stop" && method === "POST") {
+      return jsonResponse(res, serverStopPatrol());
+    }
+    if (path === "/local/patrol/run" && method === "POST") {
+      if (!sessionBase || !sessionKey) {
+        return errorResponse(res, "未登录", 401);
+      }
+      try {
+        await executeAutoManage();
+        return jsonResponse(res, { ok: true });
+      } catch (err) {
+        return errorResponse(res, err.message, 500);
+      }
     }
     return errorResponse(res, "Method not allowed", 405);
   }

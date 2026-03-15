@@ -1194,14 +1194,7 @@
               </button>
               <button
                 class="btn btn-outline"
-                onclick="
-                  if (
-                    confirm(
-                      patrolTimer ? '确认停止巡检？' : '确认开启定时巡检？',
-                    )
-                  )
-                    togglePatrol();
-                "
+                onclick="togglePatrol()"
                 id="btnPatrol"
               >
                 🔄 定时巡检
@@ -1315,6 +1308,10 @@
       const ENDPOINT_LOCAL_CONFIG = "/local/config";
       const ENDPOINT_LOCAL_PRIORITY = "/local/priority";
       const ENDPOINT_LOCAL_LOGS = "/local/logs";
+      const ENDPOINT_PATROL_START = "/local/patrol/start";
+      const ENDPOINT_PATROL_STOP = "/local/patrol/stop";
+      const ENDPOINT_PATROL_STATUS = "/local/patrol/status";
+      const ENDPOINT_PATROL_RUN = "/local/patrol/run";
 
       // -- 默认配置值 --
       const DEFAULT_TARGET = 5;
@@ -1527,6 +1524,7 @@
       }
 
       function logout() {
+        stopCountdown();
         sessionStorage.removeItem(STORAGE_KEY_SESSION);
         clearCredentials();
         location.reload();
@@ -1566,8 +1564,6 @@
       function saveConfig() {
         const cfg = {
           ...getConfig(),
-          patrolActive: !!patrolTimer,
-          patrolLastRun: _patrolLastRun,
         };
         // fire-and-forget 写入后端
         fetch(ENDPOINT_LOCAL_CONFIG, {
@@ -1602,8 +1598,6 @@
             if (cfg.patrolInterval)
               document.getElementById("patrolInterval").value =
                 cfg.patrolInterval;
-            // 恢复巡检状态到内存变量
-            _patrolLastRun = cfg.patrolLastRun || 0;
             return cfg;
           }
         } catch {}
@@ -1828,89 +1822,120 @@
       let currentFilter = FILTER_ALL;
       let searchKeyword = "";
       let usageMap = new Map();
-      let patrolTimer = null;
-      let patrolCountdown = 0;
-      let countdownTimer = null;
-      let _patrolLastRun = 0;
-      const MAX_LOG_ENTRIES = 200;
+      let _countdownTimer = null;
+      let _localCountdown = 0;
+      let _lastKnownRunAt = 0;
 
-      function getPatrolInterval() {
-        return parseInt(document.getElementById("patrolInterval").value) || 180;
+      // ============================================================
+      // 巡检控制（事件驱动同步 + 本地倒计时）
+      // ============================================================
+
+      async function fetchPatrolStatus() {
+        try {
+          const resp = await fetch(ENDPOINT_PATROL_STATUS, {
+            headers: authHeaders(),
+          });
+          if (resp.ok) return await resp.json();
+        } catch {}
+        return null;
       }
 
-      function togglePatrol() {
-        if (patrolTimer) {
-          stopPatrol();
-        } else {
-          startPatrol();
-        }
+      // 从后端拉取状态并同步 UI + 本地倒计时
+      async function syncPatrolStatus() {
+        const status = await fetchPatrolStatus();
+        applyPatrolStatus(status);
+        return status;
       }
 
-      function startPatrol(resumeCountdown = 0) {
-        const interval = getPatrolInterval();
+      function applyPatrolStatus(status) {
         const btn = document.getElementById("btnPatrol");
+        const statusEl = document.getElementById("patrolStatus");
+        if (!btn || !statusEl) return;
+
+        // 检测到新的巡检执行，自动刷新日志和数据
+        if (
+          status &&
+          status.lastRunAt > _lastKnownRunAt &&
+          _lastKnownRunAt > 0
+        ) {
+          restoreLogs();
+          refresh();
+        }
+        _lastKnownRunAt = status?.lastRunAt || 0;
+
+        if (!status || !status.active) {
+          btn.textContent = "🔄 定时巡检";
+          btn.classList.remove("btn-primary");
+          btn.classList.add("btn-outline");
+          statusEl.textContent = "";
+          stopCountdown();
+          return;
+        }
+
         btn.textContent = "⏹️ 停止巡检";
         btn.classList.remove("btn-outline");
         btn.classList.add("btn-primary");
 
-        // 恢复时使用剩余时间，否则使用完整间隔
-        patrolCountdown = resumeCountdown > 0 ? resumeCountdown : interval;
-        if (!resumeCountdown) {
-          log(`🔄 定时巡检已开启，间隔 ${interval}s`, "info");
+        if (status.running) {
+          statusEl.textContent = "执行中...";
+          stopCountdown();
+        } else {
+          // 用后端精确值初始化本地倒计时
+          _localCountdown = status.remaining || 0;
+          renderCountdown();
+          startCountdown();
         }
-        updateCountdownDisplay();
-        countdownTimer = setInterval(() => {
-          patrolCountdown--;
-          updateCountdownDisplay();
-          if (patrolCountdown <= 0) patrolCountdown = getPatrolInterval();
+      }
+
+      function startCountdown() {
+        stopCountdown();
+        _countdownTimer = setInterval(() => {
+          _localCountdown--;
+          if (_localCountdown <= 0) {
+            // 倒计时到 0，同步后端获取最新状态
+            syncPatrolStatus();
+            return;
+          }
+          renderCountdown();
         }, 1000);
-        patrolTimer = setInterval(async () => {
-          _patrolLastRun = Date.now();
-          saveConfig();
-          log("--- 定时巡检触发 ---", "info");
-          await runAutoManage();
-          patrolCountdown = getPatrolInterval();
-        }, patrolCountdown * 1000);
-        // 第一轮用剩余时间后，后续切换回正常间隔
-        if (resumeCountdown > 0 && resumeCountdown !== interval) {
-          setTimeout(() => {
-            if (!patrolTimer) return;
-            clearInterval(patrolTimer);
-            patrolTimer = setInterval(async () => {
-              _patrolLastRun = Date.now();
-              saveConfig();
-              log("--- 定时巡检触发 ---", "info");
-              await runAutoManage();
-              patrolCountdown = getPatrolInterval();
-            }, interval * 1000);
-          }, resumeCountdown * 1000);
+      }
+
+      function stopCountdown() {
+        if (_countdownTimer) {
+          clearInterval(_countdownTimer);
+          _countdownTimer = null;
         }
-        // 保存巡检状态到后端
-        _patrolLastRun = Date.now();
-        saveConfig();
       }
 
-      function stopPatrol() {
-        clearInterval(patrolTimer);
-        clearInterval(countdownTimer);
-        patrolTimer = null;
-        countdownTimer = null;
-        patrolCountdown = 0;
-        const btn = document.getElementById("btnPatrol");
-        btn.textContent = "🔄 定时巡检";
-        btn.classList.remove("btn-primary");
-        btn.classList.add("btn-outline");
-        document.getElementById("patrolStatus").textContent = "";
-        log("⏹️ 定时巡检已停止", "info");
-        // 保存停止状态到后端
-        saveConfig();
+      function renderCountdown() {
+        const el = document.getElementById("patrolStatus");
+        if (!el) return;
+        const min = Math.floor(_localCountdown / 60);
+        const sec = _localCountdown % 60;
+        el.textContent = `下次: ${min}:${String(sec).padStart(2, "0")}`;
       }
 
-      function updateCountdownDisplay() {
-        const min = Math.floor(patrolCountdown / 60);
-        const sec = patrolCountdown % 60;
-        document.getElementById("patrolStatus").textContent =
-          `下次: ${min}:${String(sec).padStart(2, "0")}`;
+      async function togglePatrol() {
+        const status = await fetchPatrolStatus();
+        if (status?.active) {
+          if (!confirm("确认停止巡检？")) return;
+          await fetch(ENDPOINT_PATROL_STOP, {
+            method: "POST",
+            headers: authHeaders(),
+          });
+        } else {
+          if (!confirm("确认开启定时巡检？")) return;
+          const interval =
+            parseInt(document.getElementById("patrolInterval").value) ||
+            DEFAULT_PATROL_INTERVAL;
+          await fetch(ENDPOINT_PATROL_START, {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ interval }),
+          });
+        }
+        await syncPatrolStatus();
+        await restoreLogs();
       }
 
       function onSearch() {
@@ -1961,6 +1986,10 @@
         const text = `[${ts}] ${msg}`;
         line.textContent = text;
         body.appendChild(line);
+        // 裁剪 DOM 节点，与后端 MAX_LOGS 对齐
+        while (body.children.length > 500) {
+          body.removeChild(body.firstChild);
+        }
         body.scrollTop = body.scrollHeight;
         // 批量持久化到后端
         _logBuffer.push({ text, cls: line.className });
@@ -2457,144 +2486,31 @@
         }
       }
 
+      // 自动管理（调用后端执行）
       async function runAutoManage() {
-        const target =
-          parseInt(document.getElementById("cfgTarget").value) || 5;
         const btn = document.getElementById("btnAuto");
         btn.disabled = true;
-        log("===== 开始自动管理 =====", "info");
-
+        showLoading(true);
         try {
-          // 1. 获取最新数据
-          const data = await apiRequest("GET", "/auth-files");
-          allFiles = data?.files ?? [];
-          const enabled = allFiles.filter(
-            (f) => !f.disabled && f.status !== STATUS_DISABLED,
-          );
-
-          // 2. 禁用 TOS_VIOLATION
-          let disabledCount = 0;
-          for (const f of enabled) {
-            const parsed = parseStatusError(f.status_message);
-            if (shouldDisable(f, parsed)) {
-              try {
-                await apiRequest("PATCH", "/auth-files/status", {
-                  name: f.name,
-                  disabled: true,
-                });
-                log(`🚫 已禁用(TOS): ${f.account}`, "warn");
-                disabledCount++;
-              } catch (err) {
-                log(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
-              }
-            }
-          }
-
-          // 2.5 获取使用统计
-          try {
-            const usageData = await apiRequest("GET", "/usage");
-            usageMap = aggregateUsageByAccount(usageData);
-            log(`📊 已加载使用统计 (${usageMap.size} 个账号有记录)`, "info");
-          } catch {
-            log("⚠️ 获取使用统计失败，将仅按 last_refresh 排序", "warn");
-          }
-
-          // 3. 重新获取最新数据
-          const freshData = await apiRequest("GET", "/auth-files");
-          allFiles = freshData?.files ?? [];
-          const currentEnabled = allFiles.filter(
-            (f) => !f.disabled && f.status !== STATUS_DISABLED,
-          );
-          const cleanPool = sortCleanPool(
-            allFiles.filter(isCleanDisabled),
-            usageMap,
-          );
-
-          // 4. 维持目标数
-          if (currentEnabled.length < target && cleanPool.length > 0) {
-            const needed = Math.min(
-              target - currentEnabled.length,
-              cleanPool.length,
-            );
-            log(
-              `🔄 启用 ${needed} 个候补账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
-              "info",
-            );
-            for (let i = 0; i < needed; i++) {
-              try {
-                await apiRequest("PATCH", "/auth-files/status", {
-                  name: cleanPool[i].name,
-                  disabled: false,
-                });
-                log(`✅ 已启用: ${cleanPool[i].account}`, "success");
-              } catch (err) {
-                log(
-                  `❌ 启用失败: ${cleanPool[i].account} - ${err.message}`,
-                  "error",
-                );
-              }
-            }
-          } else if (currentEnabled.length > target) {
-            const excess = currentEnabled.length - target;
-            // 优先禁用 error
-            const errors = currentEnabled.filter(
-              (f) => f.status === STATUS_ERROR,
-            );
-            const healthy = currentEnabled.filter(
-              (f) => f.status !== STATUS_ERROR,
-            );
-            const toDeactivate = [...errors, ...healthy].slice(0, excess);
-            log(
-              `⏸️  禁用 ${toDeactivate.length} 个多余账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
-              "info",
-            );
-            for (const f of toDeactivate) {
-              try {
-                await apiRequest("PATCH", "/auth-files/status", {
-                  name: f.name,
-                  disabled: true,
-                });
-                log(`⏸️  已禁用: ${f.account}`, "warn");
-              } catch (err) {
-                log(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
-              }
-            }
-          } else {
-            log(
-              `✅ 当前启用 ${currentEnabled.length} 个，符合目标 ${target} 个`,
-              "success",
-            );
-          }
-
-          log("===== 自动管理完成 =====", "success");
+          await fetch(ENDPOINT_PATROL_RUN, {
+            method: "POST",
+            headers: authHeaders(),
+          });
         } catch (err) {
-          log(`自动管理失败: ${err.message}`, "error");
+          log(`自动管理触发失败: ${err.message}`, "error");
         }
-
+        await restoreLogs();
         btn.disabled = false;
         await refresh();
+        showLoading(false);
       }
 
       // 初始化应用（登录后调用）
       async function initApp() {
         initLayout();
-        const cfg = await loadConfig();
+        await loadConfig();
         await Promise.all([restoreLogs(), loadPriorityFromServer()]);
-        // 从后端配置恢复巡检状态
-        if (cfg && cfg.patrolActive && !patrolTimer) {
-          const interval = getPatrolInterval();
-          const lastRun = cfg.patrolLastRun || 0;
-          const elapsed = Math.floor((Date.now() - lastRun) / 1000);
-          const remaining = Math.max(interval - elapsed, 0);
-          if (remaining <= 0) {
-            log(`🔄 恢复巡检，已超时 ${elapsed - interval}s，立即执行`, "info");
-            startPatrol();
-            runAutoManage();
-          } else {
-            log(`🔄 恢复巡检，${remaining}s 后执行下次`, "info");
-            startPatrol(remaining);
-          }
-        }
+        syncPatrolStatus();
         refresh();
       }
 
