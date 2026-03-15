@@ -2340,8 +2340,13 @@
 
           // 获取认证文件
           const data = await apiRequest("GET", "/auth-files");
-          allFiles = data?.files ?? (Array.isArray(data) ? data : []);
-          log(`获取到 ${allFiles.length} 个认证文件`, "info");
+          const rawFiles = data?.files ?? (Array.isArray(data) ? data : []);
+          // 只管理 antigravity 类型的凭证
+          allFiles = rawFiles.filter((f) => f.provider === "antigravity");
+          log(
+            `获取到 ${rawFiles.length} 个认证文件，显示 ${allFiles.length} 个 antigravity 凭证`,
+            "info",
+          );
 
           renderStats(allFiles);
           renderFilterTabs(allFiles);

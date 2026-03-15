@@ -22,6 +22,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
+import { createHash } from "node:crypto";
 import { MANAGEMENT_API_PREFIX } from "./cpa_config.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,9 +30,9 @@ const __dirname = dirname(__filename);
 
 const PORT = parseInt(process.env.PORT) || 3456;
 const DATA_DIR = process.env.DATA_DIR || __dirname;
-const PRIORITY_FILE = join(DATA_DIR, "cpa_priority.json");
-const LOG_FILE = join(DATA_DIR, "cpa_logs.json");
-const DASHBOARD_CONFIG_FILE = join(DATA_DIR, "cpa_dashboard_config.json");
+let PRIORITY_FILE = join(DATA_DIR, "cpa_priority.json");
+let LOG_FILE = join(DATA_DIR, "cpa_logs.json");
+let DASHBOARD_CONFIG_FILE = join(DATA_DIR, "cpa_dashboard_config.json");
 const MAX_LOGS = 500;
 
 // 确保数据目录存在
@@ -43,6 +44,24 @@ try {
 // 会话状态（登录时由前端提交，内存持有）
 let sessionBase = "";
 let sessionKey = "";
+
+// ============================================================
+// 多上游配置隔离
+// ============================================================
+
+// 根据上游 URL 生成短哈希，用作文件名后缀
+function upstreamSlug(baseUrl) {
+  return createHash("md5").update(baseUrl).digest("hex").slice(0, 8);
+}
+
+// 登录成功后切换到对应上游的数据文件
+function updateDataPaths(baseUrl) {
+  const slug = upstreamSlug(baseUrl);
+  PRIORITY_FILE = join(DATA_DIR, `cpa_priority_${slug}.json`);
+  LOG_FILE = join(DATA_DIR, `cpa_logs_${slug}.json`);
+  DASHBOARD_CONFIG_FILE = join(DATA_DIR, `cpa_dashboard_config_${slug}.json`);
+  console.log(`📂 数据文件命名空间: ${slug} (${baseUrl})`);
+}
 
 // ============================================================
 // MIME 类型
@@ -243,6 +262,7 @@ async function handleRequest(req, res) {
         if (testResp.ok) {
           sessionBase = base;
           sessionKey = key;
+          updateDataPaths(base);
           console.log(`✅ 登录成功，上游: ${base}`);
           return jsonResponse(res, { ok: true });
         }
