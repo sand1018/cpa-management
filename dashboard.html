@@ -1342,6 +1342,7 @@
       const FILTER_DISABLED = "disabled";
       const FILTER_CLEAN = "clean";
       const FILTER_VALIDATION = "validation";
+      const FILTER_TOS = "tosViolation";
 
       // ============================================================
       // 密钥显示/隐藏切换
@@ -2274,7 +2275,19 @@
         const errors = enabled.filter((f) => f.status === STATUS_ERROR);
         const clean = files.filter(isCleanDisabled);
         const validation = files.filter(hasValidationUrl);
-        return { enabled, disabled, healthy, errors, clean, validation };
+        const tosViolation = files.filter((f) => {
+          const parsed = parseStatusError(f.status_message);
+          return shouldDisable(f, parsed);
+        });
+        return {
+          enabled,
+          disabled,
+          healthy,
+          errors,
+          clean,
+          validation,
+          tosViolation,
+        };
       }
 
       function renderStats(files) {
@@ -2303,8 +2316,15 @@
       }
 
       function renderFilterTabs(files) {
-        const { enabled, healthy, errors, disabled, clean, validation } =
-          classifyFiles(files);
+        const {
+          enabled,
+          healthy,
+          errors,
+          disabled,
+          clean,
+          validation,
+          tosViolation,
+        } = classifyFiles(files);
 
         const tabs = [
           { key: FILTER_ALL, label: "全部", count: files.length },
@@ -2317,6 +2337,11 @@
             key: FILTER_VALIDATION,
             label: "🔗 需验证",
             count: validation.length,
+          },
+          {
+            key: FILTER_TOS,
+            label: "🚫 TOS违规",
+            count: tosViolation.length,
           },
         ];
 

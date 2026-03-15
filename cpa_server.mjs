@@ -502,23 +502,35 @@ async function executeAutoManage() {
     } else if (currentEnabled.length > target) {
       const excess = currentEnabled.length - target;
       const errors = currentEnabled.filter((f) => f.status === "error");
-      const healthy = currentEnabled.filter((f) => f.status !== "error");
-      const toDeactivate = [...errors, ...healthy].slice(0, excess);
-      addLog(
-        `⏸️ 禁用 ${toDeactivate.length} 个多余账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
-        "info",
-      );
-      for (const f of toDeactivate) {
-        try {
-          await proxyUpstream("PATCH", "/auth-files/status", {
-            name: f.name,
-            disabled: true,
-          });
-          addLog(`⏸️ 已禁用: ${f.account}`, "warn");
-        } catch (err) {
-          addLog(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+      const toDeactivate = errors.slice(0, excess);
+      if (toDeactivate.length > 0) {
+        addLog(
+          `⏸️ 禁用 ${toDeactivate.length} 个错误账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
+          "info",
+        );
+        for (const f of toDeactivate) {
+          try {
+            await proxyUpstream("PATCH", "/auth-files/status", {
+              name: f.name,
+              disabled: true,
+            });
+            addLog(`⏸️ 已禁用: ${f.account}`, "warn");
+          } catch (err) {
+            addLog(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+          }
         }
       }
+      if (toDeactivate.length < excess) {
+        addLog(
+          `⚠️ 仍超出目标 ${excess - toDeactivate.length} 个，但剩余均为健康账号，不自动禁用`,
+          "warn",
+        );
+      }
+    } else if (currentEnabled.length < target) {
+      addLog(
+        `⚠️ 当前启用 ${currentEnabled.length} 个，不足目标 ${target} 个，且无可用候补账号`,
+        "warn",
+      );
     } else {
       addLog(
         `✅ 当前启用 ${currentEnabled.length} 个，符合目标 ${target} 个`,
