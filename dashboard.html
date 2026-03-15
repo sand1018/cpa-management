@@ -2538,6 +2538,7 @@
       // 初始化应用（登录后调用）
       async function initApp() {
         initLayout();
+        setConnection("ok", "已连接");
         await loadConfig();
         await Promise.all([restoreLogs(), loadPriorityFromServer()]);
         syncPatrolStatus();
