@@ -515,26 +515,31 @@ class PatrolManager {
         (f) => !f.disabled && f.status !== "disabled",
       );
 
-      // 2. 禁用 TOS_VIOLATION
-      let tosOk = 0,
-        tosFail = 0;
-      for (const f of enabled) {
+      // 2. 并发禁用 TOS_VIOLATION
+      const tosTargets = enabled.filter((f) => {
         const parsed = parseStatusError(f.status_message);
-        if (shouldDisableAccount(f, parsed)) {
-          try {
-            await this.request("PATCH", "/auth-files/status", {
+        return shouldDisableAccount(f, parsed);
+      });
+      if (tosTargets.length > 0) {
+        const tosResults = await Promise.allSettled(
+          tosTargets.map((f) =>
+            this.request("PATCH", "/auth-files/status", {
               name: f.name,
               disabled: true,
-            });
+            }).then(() => f),
+          ),
+        );
+        let tosOk = 0,
+          tosFail = 0;
+        for (const r of tosResults) {
+          if (r.status === "fulfilled") {
             tosOk++;
-            this.log(`🚫 已禁用(TOS): ${f.account}`, "warn");
-          } catch (err) {
+            this.log(`🚫 已禁用(TOS): ${r.value.account}`, "warn");
+          } else {
             tosFail++;
-            this.log(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+            this.log(`❌ 禁用失败: ${r.reason?.message || r.reason}`, "error");
           }
         }
-      }
-      if (tosOk + tosFail > 0) {
         this.log(
           `TOS 禁用汇总: ${tosOk} 成功, ${tosFail} 失败`,
           tosFail > 0 ? "error" : "success",
@@ -571,22 +576,24 @@ class PatrolManager {
         this.log(
           `🔄 启用 ${needed} 个候补账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
         );
+        const enTargets = cleanPool.slice(0, needed);
+        const enResults = await Promise.allSettled(
+          enTargets.map((f) =>
+            this.request("PATCH", "/auth-files/status", {
+              name: f.name,
+              disabled: false,
+            }).then(() => f),
+          ),
+        );
         let enOk = 0,
           enFail = 0;
-        for (let i = 0; i < needed; i++) {
-          try {
-            await this.request("PATCH", "/auth-files/status", {
-              name: cleanPool[i].name,
-              disabled: false,
-            });
+        for (const r of enResults) {
+          if (r.status === "fulfilled") {
             enOk++;
-            this.log(`✅ 已启用: ${cleanPool[i].account}`, "success");
-          } catch (err) {
+            this.log(`✅ 已启用: ${r.value.account}`, "success");
+          } else {
             enFail++;
-            this.log(
-              `❌ 启用失败: ${cleanPool[i].account} - ${err.message}`,
-              "error",
-            );
+            this.log(`❌ 启用失败: ${r.reason?.message || r.reason}`, "error");
           }
         }
         this.log(
@@ -601,19 +608,26 @@ class PatrolManager {
           this.log(
             `⏸️ 禁用 ${toDeactivate.length} 个错误账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
           );
-          let deOk = 0,
-            deFail = 0;
-          for (const f of toDeactivate) {
-            try {
-              await this.request("PATCH", "/auth-files/status", {
+          const deResults = await Promise.allSettled(
+            toDeactivate.map((f) =>
+              this.request("PATCH", "/auth-files/status", {
                 name: f.name,
                 disabled: true,
-              });
+              }).then(() => f),
+            ),
+          );
+          let deOk = 0,
+            deFail = 0;
+          for (const r of deResults) {
+            if (r.status === "fulfilled") {
               deOk++;
-              this.log(`⏸️ 已禁用: ${f.account}`, "warn");
-            } catch (err) {
+              this.log(`⏸️ 已禁用: ${r.value.account}`, "warn");
+            } else {
               deFail++;
-              this.log(`❌ 禁用失败: ${f.account} - ${err.message}`, "error");
+              this.log(
+                `❌ 禁用失败: ${r.reason?.message || r.reason}`,
+                "error",
+              );
             }
           }
           this.log(

@@ -2160,23 +2160,28 @@
         showLoading(true);
         log(`⏳ 开始批量${action} ${selectedSet.size} 个账号...`, "info");
 
-        let success = 0;
-        let fail = 0;
-
-        for (const idx of selectedSet) {
-          const f = allFiles[idx];
-          if (!f) continue;
-          const name = f.name || f.account || f.email;
-          try {
-            await apiRequest("PATCH", "/auth-files/status", {
+        const targets = [...selectedSet]
+          .map((idx) => allFiles[idx])
+          .filter(Boolean);
+        const results = await Promise.allSettled(
+          targets.map((f) => {
+            const name = f.name || f.account || f.email;
+            return apiRequest("PATCH", "/auth-files/status", {
               name,
               disabled,
-            });
+            }).then(() => name);
+          }),
+        );
+
+        let success = 0,
+          fail = 0;
+        for (const r of results) {
+          if (r.status === "fulfilled") {
             success++;
-            log(`  ✓ ${name} 已${action}`, "success");
-          } catch (err) {
+            log(`  ✓ ${r.value} 已${action}`, "success");
+          } else {
             fail++;
-            log(`  ✗ ${name} ${action}失败: ${err.message}`, "error");
+            log(`  ✗ ${action}失败: ${r.reason?.message || r.reason}`, "error");
           }
         }
 
@@ -2229,23 +2234,28 @@
         showLoading(true);
         log(`🗑️ 开始批量删除 ${selectedSet.size} 个凭证...`, "info");
 
-        let success = 0;
-        let fail = 0;
-
-        for (const idx of selectedSet) {
-          const f = allFiles[idx];
-          if (!f) continue;
-          const name = f.name || f.account || f.email;
-          try {
-            await apiRequest(
+        const targets = [...selectedSet]
+          .map((idx) => allFiles[idx])
+          .filter(Boolean);
+        const results = await Promise.allSettled(
+          targets.map((f) => {
+            const name = f.name || f.account || f.email;
+            return apiRequest(
               "DELETE",
               `/auth-files?name=${encodeURIComponent(name)}`,
-            );
+            ).then(() => name);
+          }),
+        );
+
+        let success = 0,
+          fail = 0;
+        for (const r of results) {
+          if (r.status === "fulfilled") {
             success++;
-            log(`  ✓ ${name} 已删除`, "success");
-          } catch (err) {
+            log(`  ✓ ${r.value} 已删除`, "success");
+          } else {
             fail++;
-            log(`  ✗ ${name} 删除失败: ${err.message}`, "error");
+            log(`  ✗ 删除失败: ${r.reason?.message || r.reason}`, "error");
           }
         }
 
