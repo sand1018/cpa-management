@@ -1606,6 +1606,24 @@
         } catch {}
         return null;
       }
+      // 限制并发数的 Promise.allSettled
+      async function allSettledWithLimit(tasks, limit = 5) {
+        const results = [];
+        let i = 0;
+        async function worker() {
+          while (i < tasks.length) {
+            const idx = i++;
+            results[idx] = await tasks[idx]().then(
+              (value) => ({ status: "fulfilled", value }),
+              (reason) => ({ status: "rejected", reason }),
+            );
+          }
+        }
+        await Promise.all(
+          Array.from({ length: Math.min(limit, tasks.length) }, () => worker()),
+        );
+        return results;
+      }
 
       async function apiRequest(method, endpoint, body) {
         const { timeout } = getConfig();
@@ -2163,8 +2181,8 @@
         const targets = [...selectedSet]
           .map((idx) => allFiles[idx])
           .filter(Boolean);
-        const results = await Promise.allSettled(
-          targets.map((f) => {
+        const results = await allSettledWithLimit(
+          targets.map((f) => () => {
             const name = f.name || f.account || f.email;
             return apiRequest("PATCH", "/auth-files/status", {
               name,
@@ -2237,8 +2255,8 @@
         const targets = [...selectedSet]
           .map((idx) => allFiles[idx])
           .filter(Boolean);
-        const results = await Promise.allSettled(
-          targets.map((f) => {
+        const results = await allSettledWithLimit(
+          targets.map((f) => () => {
             const name = f.name || f.account || f.email;
             return apiRequest(
               "DELETE",

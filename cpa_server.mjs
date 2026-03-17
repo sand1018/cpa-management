@@ -82,6 +82,25 @@ const MIME = {
 // 工具函数
 // ============================================================
 
+// 限制并发数的 Promise.allSettled
+// tasks: 返回 Promise 的函数数组（惰性求值，只在 worker 取到时才执行）
+async function allSettledWithLimit(tasks, limit = 5) {
+  const results = [];
+  let i = 0;
+  async function worker() {
+    while (i < tasks.length) {
+      const idx = i++;
+      results[idx] = await tasks[idx]().then(
+        (value) => ({ status: "fulfilled", value }),
+        (reason) => ({ status: "rejected", reason }),
+      );
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(limit, tasks.length) }, () => worker()),
+  );
+  return results;
+}
 function jsonResponse(res, data, status = 200) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -521,12 +540,13 @@ class PatrolManager {
         return shouldDisableAccount(f, parsed);
       });
       if (tosTargets.length > 0) {
-        const tosResults = await Promise.allSettled(
-          tosTargets.map((f) =>
-            this.request("PATCH", "/auth-files/status", {
-              name: f.name,
-              disabled: true,
-            }).then(() => f),
+        const tosResults = await allSettledWithLimit(
+          tosTargets.map(
+            (f) => () =>
+              this.request("PATCH", "/auth-files/status", {
+                name: f.name,
+                disabled: true,
+              }).then(() => f),
           ),
         );
         let tosOk = 0,
@@ -577,12 +597,13 @@ class PatrolManager {
           `🔄 启用 ${needed} 个候补账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
         );
         const enTargets = cleanPool.slice(0, needed);
-        const enResults = await Promise.allSettled(
-          enTargets.map((f) =>
-            this.request("PATCH", "/auth-files/status", {
-              name: f.name,
-              disabled: false,
-            }).then(() => f),
+        const enResults = await allSettledWithLimit(
+          enTargets.map(
+            (f) => () =>
+              this.request("PATCH", "/auth-files/status", {
+                name: f.name,
+                disabled: false,
+              }).then(() => f),
           ),
         );
         let enOk = 0,
@@ -608,12 +629,13 @@ class PatrolManager {
           this.log(
             `⏸️ 禁用 ${toDeactivate.length} 个错误账号 (当前 ${currentEnabled.length} → 目标 ${target})`,
           );
-          const deResults = await Promise.allSettled(
-            toDeactivate.map((f) =>
-              this.request("PATCH", "/auth-files/status", {
-                name: f.name,
-                disabled: true,
-              }).then(() => f),
+          const deResults = await allSettledWithLimit(
+            toDeactivate.map(
+              (f) => () =>
+                this.request("PATCH", "/auth-files/status", {
+                  name: f.name,
+                  disabled: true,
+                }).then(() => f),
             ),
           );
           let deOk = 0,
